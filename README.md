@@ -13,7 +13,7 @@ Scrapes job listings from 19+ ATS platforms.
 - **Consider/Cherry VC** - API with pagination
 
 ### ❌ Not Working (13 platforms)
-- Lever, Workday, Personio, SmartRecruiters, Teamtailor, HiBob, Join, Gem, Getro, Rippling, Softgarden, Firststage, Generic ATS
+- Lever, Workday, Personio, SmartRecruiters, Teamtailor, HiBob, Join, Gem, Getro, Rippling, Softgarden, Generic ATS
 
 ## Structure
 
