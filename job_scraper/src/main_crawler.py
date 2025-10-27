@@ -27,10 +27,10 @@ from scrapers.done.lever_scraper import LeverScraper
 from scrapers.done.personio_scraper import PersonioScraper
 from scrapers.done.recruitee_scraper import RecruiteeScraper
 from scrapers.done.rippling_scraper import RipplingScraper
+from scrapers.done.smartrecruiters_scraper import SmartRecruitarsScraper
 from scrapers.done.workable_scraper import WorkableScraper
 
 # Import incomplete scrapers
-from scrapers.undone.smartrecruiters_scraper import SmartRecruitarsScraper
 from scrapers.undone.softgarden_scraper import SoftgardenScraper
 from scrapers.undone.teamtailor_scraper import TeamtailorScraper
 from scrapers.undone.workday_scraper import WorkdayScraper
