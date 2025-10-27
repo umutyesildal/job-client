@@ -76,6 +76,7 @@ class JobCrawlerController:
     def __init__(self, delay: float = 2.0, output_dir: str = '../../data'):
         self.delay = delay
         self.output_dir = output_dir
+        self.failed_companies = []  # Track failed companies
         
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
@@ -303,11 +304,13 @@ class JobCrawlerController:
             if pd.isna(career_page) or not career_page:
                 logger.warning(f"  ⚠️  No career page - skipping")
                 stats['failed'] += 1
+                self.failed_companies.append({'Company': company_name, 'Reason': 'No career page'})
                 continue
             
             if pd.isna(label) or not label:
                 logger.warning(f"  ⚠️  No ATS platform - skipping")
                 stats['failed'] += 1
+                self.failed_companies.append({'Company': company_name, 'Reason': 'No ATS platform'})
                 continue
             
             # Get appropriate scraper
@@ -316,6 +319,7 @@ class JobCrawlerController:
             if not scraper:
                 logger.warning(f"  ⚠️  No scraper for {label} - skipping")
                 stats['failed'] += 1
+                self.failed_companies.append({'Company': company_name, 'Reason': f'No scraper for {label}'})
                 continue
             
             try:
@@ -358,6 +362,7 @@ class JobCrawlerController:
                 else:
                     logger.warning(f"  ⚠️  No jobs found")
                     stats['failed'] += 1
+                    self.failed_companies.append({'Company': company_name, 'Reason': 'No jobs found'})
                 
                 # Brief progress update
                 logger.info(f"  📊 Progress: ✓{stats['successful']} ❌{stats['failed']} | Total: {stats['total_jobs']} jobs ({stats['new_jobs']} new)")
@@ -368,6 +373,7 @@ class JobCrawlerController:
             except Exception as e:
                 logger.error(f"  ❌ Error: {str(e)[:80]}")
                 stats['failed'] += 1
+                self.failed_companies.append({'Company': company_name, 'Reason': f'Error: {str(e)[:80]}'})
                 continue
         
         # Final summary
@@ -378,6 +384,15 @@ class JobCrawlerController:
         logger.info(f"📦 Total jobs: {stats['total_jobs']} | 🆕 New: {stats['new_jobs']}")
         logger.info(f"💾 Saved to: {self.output_dir}/all_jobs.csv")
         logger.info("="*80)
+        
+        # Print failed companies if any
+        if self.failed_companies:
+            logger.info("\n" + "="*80)
+            logger.info("❌ FAILED COMPANIES:")
+            logger.info("="*80)
+            for failure in self.failed_companies:
+                logger.info(f"  • {failure['Company']}: {failure['Reason']}")
+            logger.info("="*80)
         
         return all_jobs
     
@@ -422,6 +437,12 @@ class JobCrawlerController:
 def main():
     import argparse
     
+    # Get the directory where this script is located
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    # Go up two levels to get to jobcrawler root, then into data
+    default_data_dir = os.path.join(script_dir, '..', '..', 'data')
+    default_data_dir = os.path.abspath(default_data_dir)
+    
     parser = argparse.ArgumentParser(description='Job Crawler - Scrape jobs from multiple ATS platforms')
     parser.add_argument('input', nargs='?', default='../../data/job_search.csv',
                        help='Input CSV file or Google Sheets URL (default: ../../data/job_search.csv)')
@@ -430,12 +451,12 @@ def main():
     parser.add_argument('-l', '--limit', type=int, help='Limit number of companies to process')
     parser.add_argument('-d', '--delay', type=float, default=2.0,
                        help='Delay between requests (seconds)')
-    parser.add_argument('-o', '--output-dir', default='../data',
+    parser.add_argument('-o', '--output-dir', default=default_data_dir,
                        help='Output directory for job files')
     
     args = parser.parse_args()
     
-    logger.info("\n� Job Crawler v1.0\n")
+    logger.info("\n🤖 Job Crawler v1.0\n")
     
     # Initialize controller
     controller = JobCrawlerController(delay=args.delay, output_dir=args.output_dir)
