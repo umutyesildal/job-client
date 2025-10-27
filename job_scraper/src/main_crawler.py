@@ -24,11 +24,11 @@ from scrapers.done.greenhouse_scraper import GreenhouseScraper
 from scrapers.done.hibob_scraper import HiBobScraper
 from scrapers.done.join_scraper import JoinScraper
 from scrapers.done.lever_scraper import LeverScraper
+from scrapers.done.personio_scraper import PersonioScraper
 from scrapers.done.recruitee_scraper import RecruiteeScraper
 from scrapers.done.workable_scraper import WorkableScraper
 
 # Import incomplete scrapers
-from scrapers.undone.personio_scraper import PersonioScraper
 from scrapers.undone.rippling_scraper import RipplingScraper
 from scrapers.undone.smartrecruiters_scraper import SmartRecruitarsScraper
 from scrapers.undone.softgarden_scraper import SoftgardenScraper
