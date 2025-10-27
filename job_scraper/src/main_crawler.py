@@ -407,8 +407,8 @@ class JobCrawlerController:
         output_path = os.path.join(self.output_dir, 'all_jobs.csv')
         new_jobs_df = pd.DataFrame(jobs)
         
-        # If file exists, load it and append new jobs
-        if os.path.exists(output_path):
+        # Check if file exists AND has content
+        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
             try:
                 existing_df = pd.read_csv(output_path, encoding='utf-8')
                 
@@ -426,10 +426,10 @@ class JobCrawlerController:
                 
             except Exception as e:
                 logger.error(f"Error updating jobs file: {e}")
-                # Fallback: just append
-                new_jobs_df.to_csv(output_path, mode='a', header=False, index=False, encoding='utf-8')
+                # Fallback: just append with header
+                new_jobs_df.to_csv(output_path, mode='a', header=True, index=False, encoding='utf-8')
         else:
-            # First time: create new file
+            # First time or empty file: create new file with header
             new_jobs_df.to_csv(output_path, index=False, encoding='utf-8')
             logger.debug(f"Created new jobs database with {len(jobs)} jobs")
 
