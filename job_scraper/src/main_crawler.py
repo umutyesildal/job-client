@@ -22,11 +22,11 @@ from scrapers.done.gem_scraper import GemScraper
 from scrapers.done.getro_scraper import GetroScraper
 from scrapers.done.greenhouse_scraper import GreenhouseScraper
 from scrapers.done.hibob_scraper import HiBobScraper
+from scrapers.done.join_scraper import JoinScraper
 from scrapers.done.recruitee_scraper import RecruiteeScraper
 from scrapers.done.workable_scraper import WorkableScraper
 
 # Import incomplete scrapers
-from scrapers.undone.join_scraper import JoinScraper
 from scrapers.undone.lever_scraper import LeverScraper
 from scrapers.undone.personio_scraper import PersonioScraper
 from scrapers.undone.rippling_scraper import RipplingScraper
