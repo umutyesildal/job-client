@@ -15,6 +15,7 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # Import completed scrapers
+from scrapers.done.amazon_scraper import AmazonScraper
 from scrapers.done.ashby_scraper import AshbyScraper
 from scrapers.done.bamboohr_scraper import BambooHRScraper
 from scrapers.done.consider_scraper import ConsiderScraper
@@ -51,6 +52,8 @@ class JobCrawlerController:
     
     # Map label names to scraper classes
     SCRAPER_MAP = {
+        'amazon': AmazonScraper,
+        'amazonjobs': AmazonScraper,
         'ashbyhq': AshbyScraper,
         'ashby': AshbyScraper,
         'bamboohr': BambooHRScraper,
