@@ -98,8 +98,9 @@ class AmazonScraper:
         # Set headers
         headers = {
             'accept': 'application/json',
-            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
-            'referer': 'https://www.amazon.jobs/en/'
+            'accept-encoding': 'gzip, deflate',  # Don't request zstd
+            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36',
+            'referer': 'https://www.amazon.jobs/'
         }
         
         # Pagination parameters

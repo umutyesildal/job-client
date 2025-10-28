@@ -18,6 +18,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from scrapers.done.amazon_scraper import AmazonScraper
 from scrapers.done.ashby_scraper import AshbyScraper
 from scrapers.done.bamboohr_scraper import BambooHRScraper
+from scrapers.done.capgemini_scraper import CapgeminiScraper
 from scrapers.done.consider_scraper import ConsiderScraper
 from scrapers.done.gem_scraper import GemScraper
 from scrapers.done.getro_scraper import GetroScraper
@@ -25,15 +26,23 @@ from scrapers.done.greenhouse_scraper import GreenhouseScraper
 from scrapers.done.hibob_scraper import HiBobScraper
 from scrapers.done.join_scraper import JoinScraper
 from scrapers.done.lever_scraper import LeverScraper
+from scrapers.done.lingoda_scraper import LingodaScraper
+from scrapers.done.microsoft_scraper import MicrosoftScraper
+from scrapers.done.paypal_scraper import PayPalScraper
 from scrapers.done.personio_scraper import PersonioScraper
 from scrapers.done.recruitee_scraper import RecruiteeScraper
 from scrapers.done.rippling_scraper import RipplingScraper
 from scrapers.done.smartrecruiters_scraper import SmartRecruitarsScraper
+from scrapers.done.stripe_scraper import StripeScraper
+from scrapers.done.traderepublic_scraper import TradeRepublicScraper
+from scrapers.done.wipro_scraper import WiproScraper
 from scrapers.done.workable_scraper import WorkableScraper
 
 # Import incomplete scrapers
+from scrapers.undone.meta_scraper import MetaScraper
 from scrapers.undone.softgarden_scraper import SoftgardenScraper
 from scrapers.undone.teamtailor_scraper import TeamtailorScraper
+from scrapers.undone.tesla_scraper import TeslaScraper
 from scrapers.undone.workday_scraper import WorkdayScraper
 
 logging.basicConfig(
@@ -57,6 +66,7 @@ class JobCrawlerController:
         'ashbyhq': AshbyScraper,
         'ashby': AshbyScraper,
         'bamboohr': BambooHRScraper,
+        'capgemini': CapgeminiScraper,
         'consider': ConsiderScraper,
         'gem': GemScraper,
         'getro': GetroScraper,
@@ -65,14 +75,26 @@ class JobCrawlerController:
         'bob': HiBobScraper,
         'join': JoinScraper,
         'lever': LeverScraper,
+        'lingoda': LingodaScraper,
+        'pinpointhq': LingodaScraper,
+        'meta': MetaScraper,
+        'metacareers': MetaScraper,
+        'facebook': MetaScraper,
+        'microsoft': MicrosoftScraper,
         'myworkdayjobs': WorkdayScraper,
         'workday': WorkdayScraper,
+        'paypal': PayPalScraper,
+        'eightfold': PayPalScraper,
         'personio': PersonioScraper,
         'recruitee': RecruiteeScraper,
         'rippling': RipplingScraper,
         'smartrecruiters': SmartRecruitarsScraper,
         'softgarden': SoftgardenScraper,
+        'stripe': StripeScraper,
         'teamtailor': TeamtailorScraper,
+        'tesla': TeslaScraper,
+        'traderepublic': TradeRepublicScraper,
+        'wipro': WiproScraper,
         'workable': WorkableScraper,
     }
     
