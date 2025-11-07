@@ -44,6 +44,7 @@ Thumbs.db
 data/*.csv
 data/*.json
 data/*.xlsx
+data/*.txt
 *.csv
 *.json
 
