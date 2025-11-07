@@ -289,13 +289,6 @@ class JobCrawlerController:
             return []
     
     def process_companies(self, df: pd.DataFrame, limit: int = None):
-        """
-        Process multiple companies from dataframe
-        
-        Args:
-            df: DataFrame with company data
-            limit: Optional limit on number of companies to process
-        """
         all_jobs = []
         stats = {
             'total_companies': len(df) if limit is None else min(limit, len(df)),
@@ -305,7 +298,8 @@ class JobCrawlerController:
             'new_jobs': 0
         }
         
-        # Load existing jobs to detect new ones
+        self.compare_and_backup()
+        
         existing_jobs = self._load_existing_jobs()
         
         companies_to_process = df.head(limit) if limit else df
@@ -419,7 +413,145 @@ class JobCrawlerController:
                 logger.info(f"  • {failure['Company']}: {failure['Reason']}")
             logger.info("="*80)
         
+        self.generate_comparison_report()
+        
         return all_jobs
+    
+    def compare_and_backup(self):
+        """Compare old and new job data, create backup, and generate report"""
+        output_path = os.path.join(self.output_dir, 'all_jobs.csv')
+        backup_path = os.path.join(self.output_dir, 'all_jobs_backup.csv')
+        
+        if not os.path.exists(output_path):
+            logger.info("\n📝 No previous data to compare (first run)")
+            return
+        
+        try:
+            old_df = pd.read_csv(output_path, encoding='utf-8')
+            
+            if len(old_df) == 0:
+                logger.info("\n📝 Previous file was empty, no comparison needed")
+                return
+            
+            pd.DataFrame(old_df).to_csv(backup_path, index=False, encoding='utf-8')
+            logger.info(f"\n💾 Backed up previous data: {len(old_df)} jobs → all_jobs_backup.csv")
+            
+        except Exception as e:
+            logger.error(f"❌ Error during backup: {e}")
+    
+    def generate_comparison_report(self):
+        """Generate comparison report between old and new job data"""
+        output_path = os.path.join(self.output_dir, 'all_jobs.csv')
+        backup_path = os.path.join(self.output_dir, 'all_jobs_backup.csv')
+        
+        if not os.path.exists(backup_path):
+            return
+        
+        try:
+            old_df = pd.read_csv(backup_path, encoding='utf-8')
+            new_df = pd.read_csv(output_path, encoding='utf-8')
+            
+            old_links = set(old_df['Job Link'].tolist())
+            new_links = set(new_df['Job Link'].tolist())
+            
+            added_links = new_links - old_links
+            removed_links = old_links - new_links
+            unchanged_links = old_links & new_links
+            
+            added_jobs = new_df[new_df['Job Link'].isin(added_links)]
+            removed_jobs = old_df[old_df['Job Link'].isin(removed_links)]
+            
+            student_new_jobs = added_jobs[
+                added_jobs['Job Title'].str.lower().str.contains('student|intern|praktikum', na=False)
+            ]
+            
+            student_removed_jobs = removed_jobs[
+                removed_jobs['Job Title'].str.lower().str.contains('student|intern|praktikum', na=False)
+            ]
+            
+            report_lines = []
+            report_lines.append("\n" + "="*80)
+            report_lines.append("📊 JOB CHANGES REPORT")
+            report_lines.append("="*80)
+            report_lines.append(f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            report_lines.append("")
+            report_lines.append(f"📦 Previous: {len(old_df)} jobs")
+            report_lines.append(f"📦 Current:  {len(new_df)} jobs")
+            report_lines.append(f"📈 Net change: {len(new_df) - len(old_df):+d} jobs")
+            report_lines.append("")
+            report_lines.append(f"🆕 New jobs:     {len(added_links)}")
+            report_lines.append(f"❌ Removed jobs: {len(removed_links)}")
+            report_lines.append(f"✓  Unchanged:    {len(unchanged_links)}")
+            report_lines.append("="*80)
+            
+            if len(student_new_jobs) > 0:
+                report_lines.append("")
+                report_lines.append(f"🎓 NEW STUDENT JOBS ({len(student_new_jobs)}):")
+                report_lines.append("-"*80)
+                for _, job in student_new_jobs.iterrows():
+                    company = job.get('Company', 'Unknown')
+                    if pd.isna(company):
+                        company = 'Unknown'
+                    
+                    title = job.get('Job Title', 'Unknown')
+                    if pd.isna(title):
+                        title = 'Unknown'
+                    
+                    location = job.get('Location', 'Unknown')
+                    if pd.isna(location):
+                        location = 'Unknown'
+                    
+                    job_link = job.get('Job Link', '')
+                    if pd.isna(job_link):
+                        job_link = 'No link available'
+                    
+                    report_lines.append(f"  • {title}")
+                    report_lines.append(f"    @ {company} | {location}")
+                    report_lines.append(f"    🔗 {job_link}")
+                    report_lines.append("")
+                report_lines.append("-"*80)
+            
+            if len(student_removed_jobs) > 0:
+                report_lines.append("")
+                report_lines.append(f"❌ REMOVED STUDENT JOBS ({len(student_removed_jobs)}):")
+                report_lines.append("-"*80)
+                for _, job in student_removed_jobs.iterrows():
+                    company = job.get('Company', 'Unknown')
+                    if pd.isna(company):
+                        company = 'Unknown'
+                    
+                    title = job.get('Job Title', 'Unknown')
+                    if pd.isna(title):
+                        title = 'Unknown'
+                    
+                    location = job.get('Location', 'Unknown')
+                    if pd.isna(location):
+                        location = 'Unknown'
+                    
+                    job_link = job.get('Job Link', '')
+                    if pd.isna(job_link):
+                        job_link = 'No link available'
+                    
+                    report_lines.append(f"  • {title}")
+                    report_lines.append(f"    @ {company} | {location}")
+                    report_lines.append(f"    🔗 {job_link}")
+                    report_lines.append("")
+                report_lines.append("-"*80)
+            
+            report_text = "\n".join(report_lines)
+            
+            for line in report_lines:
+                logger.info(line)
+            
+            report_filename = f"job_changes_{datetime.now().strftime('%Y-%m-%d')}.txt"
+            report_path = os.path.join(self.output_dir, report_filename)
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(report_text)
+            
+            logger.info(f"\n💾 Report saved to: {report_filename}\n")
+            
+        except Exception as e:
+            logger.error(f"❌ Error generating comparison report: {e}")
     
     def save_jobs(self, jobs: List[Dict]):
         """

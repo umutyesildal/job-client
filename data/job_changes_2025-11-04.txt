@@ -1,0 +1,30 @@
+
+================================================================================
+📊 JOB CHANGES REPORT
+================================================================================
+📅 Generated: 2025-11-04 09:57:35
+
+📦 Previous: 12951 jobs
+📦 Current:  13188 jobs
+📈 Net change: +237 jobs
+
+🆕 New jobs:     237
+❌ Removed jobs: 0
+✓  Unchanged:    12951
+================================================================================
+
+🎓 NEW STUDENT JOBS (6):
+--------------------------------------------------------------------------------
+  • Head of International Sales, Terminal
+    @ nan | London
+  • Intern Influencer & Affiliate Marketing
+    @ nan | Berlin
+  • Working Student - Sales
+    @ nan | Amsterdam, North Holland, Netherlands
+  • Head of International GTM Strategy & Operations
+    @ nan | Dublin, IE
+  • Brand Partnerships Marketing Intern
+    @ nan | US - Remote Zone 1 (Job Requisitions Only)
+  • Internship Program
+    @ nan | Kuala Lumpur, Malaysia
+--------------------------------------------------------------------------------

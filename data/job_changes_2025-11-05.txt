@@ -1,0 +1,36 @@
+
+================================================================================
+📊 JOB CHANGES REPORT
+================================================================================
+📅 Generated: 2025-11-05 09:33:06
+
+📦 Previous: 13188 jobs
+📦 Current:  13534 jobs
+📈 Net change: +346 jobs
+
+🆕 New jobs:     346
+❌ Removed jobs: 0
+✓  Unchanged:    13188
+================================================================================
+
+🎓 NEW STUDENT JOBS (9):
+--------------------------------------------------------------------------------
+  • Working Student System Administrator (20 hours/week)
+    @ nan | Munich, Germany
+  • Computer Vision and Machine Learning Intern
+    @ nan | Watertown, MA, USA
+  • 2026 - Operations Analyst Intern, NYC
+    @ nan | New York City
+  • 2026 - Security Intern, Dublin
+    @ nan | Dublin
+  • 2026 - Software Engineering Intern - Internal Engineering, Dublin  
+    @ nan | Dublin
+  • UX Quantitative Research Intern
+    @ nan | San Francisco
+  • Associate Product Manager, Thrive Intern
+    @ nan | Pittsburgh, PA
+  • GTM Internship - Spain
+    @ nan | Berlin
+  • Sales Operations & Back Office Intern | Lavoro Full Time in sede a Milano | Italiano fluente richiesto
+    @ nan | Sales
+--------------------------------------------------------------------------------
