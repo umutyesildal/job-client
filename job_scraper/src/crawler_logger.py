@@ -216,15 +216,6 @@ class CrawlerLogger:
             logger.info(f"  • {issue['timestamp']} - {issue['company']}: {issue['issue_type']}{status_info}")
         logger.info("="*80)
     
-    @staticmethod
-    def delay_warning(delay: float):
-        """Log delay warnings"""
-        if delay < 0.2:
-            logger.warning("⚡ WARNING: Ultra-low delay! Monitor rate limiting closely and increase if needed")
-            logger.warning("⚡ Monitor rate limiting closely and increase if needed")
-        elif delay < 0.5:
-            logger.warning(f"⚡ WARNING: Very low delay ({delay}s) may cause rate limiting issues!")
-            logger.warning("⚡ Consider using 1.0s+ for production scraping")
     
     @staticmethod
     def rate_limited_request(company_name: str, status_code: int, current_delay: float):

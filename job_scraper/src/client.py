@@ -1,22 +1,4 @@
-"""
-Main Job Crawler Controller
-Reads company data and orchestrates scraping across different ATS platforms
-"""
-
-import pandas as pd
-import logging
-import time
-import requests
-from datetime import datetime
-from typing import List, Dict
-import os
-import sys
-from report_lines import ReportGenerator
-
-# Add parent directory to path for imports
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-# Import completed scrapers
+from crawler_logger import CrawlerLogger
 from scrapers.done.amazon_scraper import AmazonScraper
 from scrapers.done.ashby_scraper import AshbyScraper
 from scrapers.done.bamboohr_scraper import BambooHRScraper
@@ -39,26 +21,16 @@ from scrapers.done.stripe_scraper import StripeScraper
 from scrapers.done.traderepublic_scraper import TradeRepublicScraper
 from scrapers.done.wipro_scraper import WiproScraper
 from scrapers.done.workable_scraper import WorkableScraper
-
-# Import incomplete scrapers
-from scrapers.undone.meta_scraper import MetaScraper
-from scrapers.undone.softgarden_scraper import SoftgardenScraper
-from scrapers.undone.teamtailor_scraper import TeamtailorScraper
-from scrapers.undone.tesla_scraper import TeslaScraper
-from scrapers.undone.workday_scraper import WorkdayScraper
-
-from crawler_logger import CrawlerLogger
-logger = logging.getLogger(__name__)
-
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(message)s',  # Simplified format without timestamps
-    handlers=[
-        logging.FileHandler('job_crawler.log', encoding='utf-8'),
-        logging.StreamHandler()
-    ]
-)
-
+import time
+import requests
+from datetime import datetime
+from typing import List, Dict
+import pandas as pd
+import logging
+import os
+import sys
+from report_generator import ReportGenerator
+import argparse
 
 class JobCrawlerController:
     """Main controller for orchestrating job scraping across ATS platforms"""
@@ -81,22 +53,14 @@ class JobCrawlerController:
         'lever': LeverScraper,
         'lingoda': LingodaScraper,
         'pinpointhq': LingodaScraper,
-        'meta': MetaScraper,
-        'metacareers': MetaScraper,
-        'facebook': MetaScraper,
         'microsoft': MicrosoftScraper,
-        'myworkdayjobs': WorkdayScraper,
-        'workday': WorkdayScraper,
         'paypal': PayPalScraper,
         'eightfold': PayPalScraper,
         'personio': PersonioScraper,
         'recruitee': RecruiteeScraper,
         'rippling': RipplingScraper,
         'smartrecruiters': SmartRecruitarsScraper,
-        'softgarden': SoftgardenScraper,
         'stripe': StripeScraper,
-        'teamtailor': TeamtailorScraper,
-        'tesla': TeslaScraper,
         'traderepublic': TradeRepublicScraper,
         'wipro': WiproScraper,
         'workable': WorkableScraper,
@@ -120,8 +84,6 @@ class JobCrawlerController:
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
         
-        # Warn about very low delays
-        CrawlerLogger.delay_warning(delay)
     
     def log_request_issue(self, company_name: str, issue_type: str, details: str, status_code: int = None):
         """Log rate limiting and request issues"""
@@ -249,6 +211,7 @@ class JobCrawlerController:
         except Exception as e:
             CrawlerLogger.warning_message(f"⚠️  Could not save timing history: {e}")
     
+    
     def get_timing_trends(self) -> dict:
         """Get timing trends from historical data"""
         timing_file = os.path.join(self.output_dir, 'timing_history.json')
@@ -278,47 +241,6 @@ class JobCrawlerController:
         except:
             return {}
     
-    def load_data_from_csv(self, csv_path: str) -> pd.DataFrame:
-        """Load company data from CSV file"""
-        df = pd.read_csv(csv_path, low_memory=False, dtype=str)
-        
-        # Normalize column names to handle different schemas
-        df = self._normalize_dataframe(df)
-        
-        return df
-    
-    def _normalize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Normalize dataframe column names to handle different schemas
-        Supports both old schema (Name, Website, Career Page) and new schema (Website, Career Page, Active)
-        """
-        # Create a copy to avoid modifying original
-        df = df.copy()
-        
-        # If 'Website' exists but 'Name' doesn't, use Website as Name
-        if 'Website' in df.columns and 'Name' not in df.columns:
-            # Extract domain name from website URL for display
-            df['Name'] = df['Website'].apply(self._extract_domain_name)
-        
-        # Ensure required columns exist
-        required_columns = ['Name', 'Career Page', 'Label']
-        for col in required_columns:
-            if col not in df.columns:
-                CrawlerLogger.missing_column_warning(col)
-                df[col] = 'N/A'
-        
-        # Add Description if missing
-        if 'Description' not in df.columns:
-            df['Description'] = 'N/A'
-        
-        # Filter by Active status if column exists
-        if 'Active' in df.columns:
-            # Filter only active entries
-            active_count = len(df)
-            df = df[df['Active'].str.lower() == 'active'].copy()
-            CrawlerLogger.info_message(f"Filtered to {len(df)} active companies (out of {active_count} total)")
-        
-        return df
     
     def _extract_domain_name(self, url: str) -> str:
         """Extract clean domain name from URL for display"""
@@ -494,7 +416,7 @@ class JobCrawlerController:
             return []
     
     def process_companies(self, df: pd.DataFrame, limit: int = None):
-        
+
         # Compare old data and backup
         self.compare_and_backup()
         
@@ -518,10 +440,6 @@ class JobCrawlerController:
         
         CrawlerLogger.startup_header(stats['total_companies'], len(existing_jobs))
         
-        # Log performance optimization
-        if existing_jobs_by_company:
-            avg_jobs_per_company = len(existing_jobs) / len(existing_jobs_by_company) if existing_jobs_by_company else 0
-            CrawlerLogger.info_message(f"🚀 Using optimized company-specific job lookup (~{avg_jobs_per_company:.0f} vs {len(existing_jobs)} comparisons per company)")
         
         for idx, row in companies_to_process.iterrows():
             company_name = row.get('Name', 'Unknown')
@@ -857,53 +775,3 @@ class JobCrawlerController:
             # First time or empty file: create new file with header
             new_jobs_df.to_csv(output_path, index=False, encoding='utf-8')
             CrawlerLogger.debug_new_database(len(jobs))
-
-
-def main():
-    import argparse
-    
-    # Get current directory and data directory
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    default_data_dir = os.path.join(script_dir, '..', '..', 'data')
-    default_data_dir = os.path.abspath(default_data_dir)
-    
-    
-    parser = argparse.ArgumentParser(description='Job Crawler - Scrape jobs from multiple ATS platforms')
-    parser.add_argument('input', nargs='?', default='../../data/job_search.csv',
-                       help='Input CSV file (default: ../../data/job_search.csv)')
-    parser.add_argument('-l', '--limit', type=int, help='Limit number of companies to process')
-    parser.add_argument('-d', '--delay', type=float, default=0.2,
-                       help='Delay between requests (seconds)')
-    parser.add_argument('-o', '--output-dir', default=default_data_dir,
-                       help='Output directory for job files')
-    
-    args = parser.parse_args()
-    
-    CrawlerLogger.info_message("\n🤖 Job Crawler v1.0\n")
-    
-    # Initialize controller
-    controller = JobCrawlerController(delay=args.delay, output_dir=args.output_dir)
-    
-    # Load data
-    try:
-        CrawlerLogger.info_message(f"📥 Loading from: {args.input}")
-        df = controller.load_data_from_csv(args.input)
-        
-        CrawlerLogger.info_message(f"✓ Loaded {len(df)} companies\n")
-        
-    except Exception as e:
-        CrawlerLogger.error_message(f"❌ Failed to load data: {e}")
-        return
-    
-    # Process companies
-    try:
-        controller.process_companies(df, limit=args.limit)
-            
-    except KeyboardInterrupt:
-        CrawlerLogger.interrupted_warning()
-    except Exception as e:
-        CrawlerLogger.general_error(e)
-
-
-if __name__ == '__main__':
-    main()
