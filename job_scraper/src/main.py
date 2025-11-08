@@ -38,13 +38,15 @@ def main():
                     help='Delay between requests (seconds)')
     parser.add_argument('-o', '--output-dir', default=default_data_dir,
                     help='Output directory for job files')
+    parser.add_argument('-w', '--workers', type=int, default=None,
+                    help='Number of concurrent scrapers to run (default: auto)')
     
     args = parser.parse_args()
     
     CrawlerLogger.info_message("\n🤖 Job Crawler v1.0\n")
     
     # Initialize controller
-    controller = JobCrawlerController(delay=args.delay, output_dir=args.output_dir)
+    controller = JobCrawlerController(delay=args.delay, output_dir=args.output_dir, max_workers=args.workers)
     data_ctrl = DataController()
     # Load data
     try:

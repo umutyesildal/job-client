@@ -23,14 +23,43 @@ from scrapers.done.wipro_scraper import WiproScraper
 from scrapers.done.workable_scraper import WorkableScraper
 import time
 import requests
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import threading
 from datetime import datetime
 from typing import List, Dict
+from urllib.parse import urlparse
 import pandas as pd
-import logging
 import os
-import sys
 from report_generator import ReportGenerator
-import argparse
+
+
+class DomainRateLimiter:
+    """Simple per-domain rate limiter to enforce minimum delay between requests."""
+
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._last_request = {}
+
+    def wait(self, domain: str, delay: float):
+        """Block until the minimum delay has passed for the given domain."""
+        domain_key = domain or 'global'
+
+        if delay <= 0:
+            with self._lock:
+                self._last_request[domain_key] = time.monotonic()
+            return
+
+        while True:
+            with self._lock:
+                last_request = self._last_request.get(domain_key)
+                now = time.monotonic()
+                if last_request is None or (now - last_request) >= delay:
+                    self._last_request[domain_key] = now
+                    return
+                wait_time = delay - (now - last_request)
+
+            if wait_time > 0:
+                time.sleep(wait_time)
 
 class JobCrawlerController:
     """Main controller for orchestrating job scraping across ATS platforms"""
@@ -66,7 +95,7 @@ class JobCrawlerController:
         'workable': WorkableScraper,
     }
     
-    def __init__(self, delay: float = 2.0, output_dir: str = '../../data'):
+    def __init__(self, delay: float = 2.0, output_dir: str = '../../data', max_workers: int = None):
         self.delay = delay
         self.output_dir = output_dir
         self.failed_companies = []  # Track failed companies
@@ -80,7 +109,11 @@ class JobCrawlerController:
             'connection_errors': 0,
             'successful': 0
         }
-        
+
+        self.max_workers = max_workers if max_workers and max_workers > 0 else max(1, min(8, (os.cpu_count() or 4)))
+        self._rate_limiter = DomainRateLimiter()
+        self._request_lock = threading.Lock()
+
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
         
@@ -95,23 +128,26 @@ class JobCrawlerController:
             'status_code': status_code,
             'current_delay': self.delay
         }
-        
-        self.rate_limit_issues.append(issue_data)
-        
-        # Update stats
-        self.request_stats['total_requests'] += 1
-        
-        if issue_type == 'rate_limited':
-            self.request_stats['rate_limited'] += 1
-            CrawlerLogger.rate_limited_request(company_name, status_code, self.delay)
-        elif issue_type == 'timeout':
-            self.request_stats['timeouts'] += 1
-            CrawlerLogger.timeout_request(company_name, details)
-        elif issue_type == 'connection_error':
-            self.request_stats['connection_errors'] += 1
-            CrawlerLogger.connection_error_request(company_name, details)
-        elif issue_type == 'success':
-            self.request_stats['successful'] += 1
+
+        with self._request_lock:
+            self.rate_limit_issues.append(issue_data)
+            self.request_stats['total_requests'] += 1
+
+            if issue_type == 'rate_limited':
+                self.request_stats['rate_limited'] += 1
+                CrawlerLogger.rate_limited_request(company_name, status_code, self.delay)
+            elif issue_type == 'timeout':
+                self.request_stats['timeouts'] += 1
+                CrawlerLogger.timeout_request(company_name, details)
+            elif issue_type == 'connection_error':
+                self.request_stats['connection_errors'] += 1
+                CrawlerLogger.connection_error_request(company_name, details)
+            elif issue_type == 'success':
+                self.request_stats['successful'] += 1
+            else:
+                # Treat unknown error types as generic warnings
+                self.request_stats['connection_errors'] += 1
+                CrawlerLogger.warning_message(f"  ⚠️  Request issue for {company_name}: {details}")
     
     def should_increase_delay(self) -> bool:
         """Check if delay should be increased based on error rate"""
@@ -260,27 +296,126 @@ class JobCrawlerController:
         except:
             return url
     
-    def get_scraper(self, label: str):
-        """Get appropriate scraper based on label"""
-        # Normalize label (lowercase, remove spaces and hyphens)
+    def _resolve_scraper_class(self, label: str):
+        """Return the scraper class for the provided label."""
+        if pd.isna(label) or not label:
+            return None
+
         normalized_label = label.lower().strip().replace(' ', '').replace('-', '')
-        
-        # First try exact match
+
         if normalized_label in self.SCRAPER_MAP:
-            return self.SCRAPER_MAP[normalized_label]()
-        
-        # Then try substring matching, but prioritize shorter matches to avoid 'gem' matching 'capgemini'
+            return self.SCRAPER_MAP[normalized_label]
+
         matches = []
         for key, scraper_class in self.SCRAPER_MAP.items():
             if key in normalized_label or normalized_label in key:
-                matches.append((key, scraper_class))
-        
+                matches.append((len(key), scraper_class))
+
         if matches:
-            # Sort by key length to prefer exact/shorter matches
-            matches.sort(key=lambda x: len(x[0]))
-            return matches[0][1]()
-        
+            matches.sort(key=lambda item: item[0])
+            return matches[0][1]
+
         return None
+
+    def get_scraper(self, label: str):
+        """Get appropriate scraper instance based on label"""
+        scraper_class = self._resolve_scraper_class(label)
+        if not scraper_class:
+            return None
+
+        scraper = scraper_class()
+        if hasattr(scraper, 'delay'):
+            scraper.delay = self.delay
+        return scraper
+
+    def _get_rate_limit_key(self, url: str) -> str:
+        """Generate a domain key for rate limiting purposes."""
+        if pd.isna(url) or not url:
+            return 'global'
+
+        parsed = urlparse(url)
+        if parsed.netloc:
+            return parsed.netloc.lower()
+
+        cleaned = url.split('/')[0].strip().lower()
+        return cleaned or 'global'
+
+    def _scrape_company_task(self, task: Dict) -> Dict:
+        """Worker task for scraping a single company."""
+        company_name = task['company_name']
+        career_page = task['career_page']
+        description = task['description']
+        label = task['label']
+        scraper_class = task['scraper_class']
+        rate_limit_key = task['rate_limit_key']
+
+        scraper = scraper_class()
+        if hasattr(scraper, 'delay'):
+            scraper.delay = self.delay
+
+        self._rate_limiter.wait(rate_limit_key, self.delay)
+        start_time = time.time()
+
+        try:
+            jobs = scraper.scrape_jobs(
+                url=career_page,
+                company_name=company_name,
+                company_description=description,
+                label=label
+            ) or []
+
+            elapsed = time.time() - start_time
+            return {
+                'status': 'success',
+                'jobs': jobs,
+                'elapsed': elapsed,
+                'company_name': company_name
+            }
+
+        except KeyboardInterrupt:
+            raise
+        except requests.exceptions.HTTPError as e:
+            elapsed = time.time() - start_time
+            status_code = e.response.status_code if hasattr(e, 'response') and e.response is not None else None
+            issue_type = 'rate_limited' if status_code in [429, 403, 503] else 'http_error'
+            return {
+                'status': 'error',
+                'error': e,
+                'issue_type': issue_type,
+                'status_code': status_code,
+                'elapsed': elapsed,
+                'company_name': company_name
+            }
+        except requests.exceptions.Timeout as e:
+            elapsed = time.time() - start_time
+            return {
+                'status': 'error',
+                'error': e,
+                'issue_type': 'timeout',
+                'status_code': None,
+                'elapsed': elapsed,
+                'company_name': company_name
+            }
+        except requests.exceptions.ConnectionError as e:
+            elapsed = time.time() - start_time
+            return {
+                'status': 'error',
+                'error': e,
+                'issue_type': 'connection_error',
+                'status_code': None,
+                'elapsed': elapsed,
+                'company_name': company_name
+            }
+        except Exception as e:
+            elapsed = time.time() - start_time
+            return {
+                'status': 'error',
+                'error': e,
+                'issue_type': 'error',
+                'status_code': None,
+                'elapsed': elapsed,
+                'company_name': company_name
+            }
     
     def _load_existing_jobs_by_company(self) -> Dict[str, set]:
         """
@@ -419,15 +554,15 @@ class JobCrawlerController:
 
         # Compare old data and backup
         self.compare_and_backup()
-        
+
         # Load existing jobs grouped by company for faster lookup
         existing_jobs_by_company = self._load_existing_jobs_by_company()
-        
+
         # Keep legacy single set for global operations (reports, etc.)
         existing_jobs = self._load_existing_jobs()
-        
+
         companies_to_process = df.head(limit) if limit else df
-        
+
         all_jobs = []
         stats = {
             'total_companies': len(df) if limit is None else min(limit, len(df)),
@@ -436,195 +571,194 @@ class JobCrawlerController:
             'total_jobs': 0,
             'new_jobs': 0
         }
-        
-        
+
         CrawlerLogger.startup_header(stats['total_companies'], len(existing_jobs))
-        
-        
+
+        tasks = []
+
         for idx, row in companies_to_process.iterrows():
             company_name = row.get('Name', 'Unknown')
             career_page = row.get('Career Page', '')
             description = row.get('Description', 'N/A')
             label = row.get('Label', 'unknown')
-            
+
             CrawlerLogger.company_start(idx, stats['total_companies'], company_name, label)
-            
-            # Validate input
+
             if pd.isna(career_page) or not career_page:
                 CrawlerLogger.warning_no_career_page(company_name)
                 stats['failed'] += 1
                 self.failed_companies.append({'Company': company_name, 'Reason': 'No career page'})
+                CrawlerLogger.progress_update(stats['successful'], stats['failed'], stats['total_jobs'], stats['new_jobs'])
                 continue
-            
+
             if pd.isna(label) or not label:
                 CrawlerLogger.warning_no_ats_platform()
                 stats['failed'] += 1
                 self.failed_companies.append({'Company': company_name, 'Reason': 'No ATS platform'})
+                CrawlerLogger.progress_update(stats['successful'], stats['failed'], stats['total_jobs'], stats['new_jobs'])
                 continue
-            
-            # Get appropriate scraper
-            scraper = self.get_scraper(label)
-            
-            if not scraper:
+
+            scraper_class = self._resolve_scraper_class(label)
+            if not scraper_class:
                 CrawlerLogger.warning_no_scraper(label)
                 stats['failed'] += 1
                 self.failed_companies.append({'Company': company_name, 'Reason': f'No scraper for {label}'})
-                continue
-            
-            try:
-                start_time = time.time()
-                
-                # Scrape jobs with error detection
-                try:
-                    jobs = scraper.scrape_jobs(
-                        url=career_page,
-                        company_name=company_name,
-                        company_description=description,
-                        label=label
-                    )
-                    
-                    # Log successful request
-                    self.log_request_issue(company_name, 'success', 'Job scraping successful')
-                    
-                except requests.exceptions.HTTPError as e:
-                    # Detect rate limiting (429, 403, 503 status codes)
-                    if hasattr(e, 'response') and e.response is not None:
-                        status_code = e.response.status_code
-                        if status_code in [429, 403, 503]:
-                            self.log_request_issue(company_name, 'rate_limited', str(e), status_code)
-                        else:
-                            self.log_request_issue(company_name, 'http_error', str(e), status_code)
-                    raise e
-                    
-                except requests.exceptions.Timeout as e:
-                    self.log_request_issue(company_name, 'timeout', str(e))
-                    raise e
-                    
-                except requests.exceptions.ConnectionError as e:
-                    self.log_request_issue(company_name, 'connection_error', str(e))
-                    raise e
-                
-                elapsed_time = time.time() - start_time
-                
-                if jobs:
-                    # Get existing jobs for this specific company
-                    company_existing_jobs = existing_jobs_by_company.get(company_name, set())
-                    
-                    new_jobs = [j for j in jobs if j.get('Job Link') not in company_existing_jobs]
-                    
-                    # TODO: Add closed jobs detection here in future
-                    # closed_jobs = company_existing_jobs - {j.get('Job Link') for j in jobs}
-                    
-                    # Log timing data
-                    self.log_company_timing(company_name, elapsed_time, len(jobs), 'success')
-                    
-                    # Show success with clean logging
-                    new_job_titles = [job.get('Job Title', 'Untitled') for job in new_jobs]
-                    CrawlerLogger.company_success(len(jobs), len(new_jobs), elapsed_time, 
-                                                company_name, new_job_titles)
-                    
-                    # Check for slow companies
-                    CrawlerLogger.warning_slow_company(company_name, elapsed_time, len(jobs))
-                    if elapsed_time > 60:
-                        self.failed_companies.append({'Company': company_name, 'Reason': f'Slow performance: {elapsed_time:.1f}s for {len(jobs)} jobs'})
-                    
-                    if new_jobs:
-                        # Add new jobs to tracking sets for future comparisons
-                        for job in new_jobs:
-                            job_link = job.get('Job Link')
-                            # Update global set (for backward compatibility)
-                            existing_jobs.add(job_link)
-                            
-                            # Update company-specific set (for performance)
-                            if company_name not in existing_jobs_by_company:
-                                existing_jobs_by_company[company_name] = set()
-                            existing_jobs_by_company[company_name].add(job_link)
-                        
-                        stats['new_jobs'] += len(new_jobs)
-                    
-                    # Save jobs immediately after each company (incremental save)
-                    self.save_jobs(jobs)
-                    
-                    stats['total_jobs'] += len(jobs)
-                    stats['successful'] += 1
-                else:
-                    # Log timing for companies with no jobs (this is normal, not an error!)
-                    self.log_company_timing(company_name, elapsed_time, 0, 'no_jobs')
-                    CrawlerLogger.company_no_jobs(elapsed_time)
-                    
-                    # Check if slow even with no jobs - this could indicate a problem
-                    if elapsed_time > 60:
-                        CrawlerLogger.warning_slow_company(company_name, elapsed_time, 0)
-                        self.failed_companies.append({'Company': company_name, 'Reason': f'Possible scraping issue: {elapsed_time:.1f}s with no jobs'})
-                        stats['failed'] += 1
-                    else:
-                        # Normal case: no jobs but scraper worked fine
-                        self.no_jobs_companies.append({'Company': company_name, 'Time': f'{elapsed_time:.1f}s'})
-                        stats['successful'] += 1  # This is actually successful - just no jobs available
-                
-                # Brief progress update
                 CrawlerLogger.progress_update(stats['successful'], stats['failed'], stats['total_jobs'], stats['new_jobs'])
-                
-                # Check if delay should be adjusted
-                if self.should_increase_delay():
-                    recommended_delay = self.get_delay_recommendation()
-                    if recommended_delay > self.delay:
-                        CrawlerLogger.warning_rate_limiting(recommended_delay, self.delay)
-                
-                # Delay between companies
-                time.sleep(self.delay)
-                
-            except Exception as e:
-                elapsed_time = time.time() - start_time
-                
-                # Log timing for failed attempts
-                self.log_company_timing(company_name, elapsed_time, 0, 'error')
-                CrawlerLogger.company_error(str(e), elapsed_time)
-                
-                # Check if error took too long
-                if elapsed_time > 60:
-                    reason = f'Error + slow performance: {elapsed_time:.1f}s - {str(e)[:50]}'
-                else:
-                    reason = f'Error: {str(e)[:80]}'
-                
-                stats['failed'] += 1
-                self.failed_companies.append({'Company': company_name, 'Reason': reason})
                 continue
-        
+
+            tasks.append({
+                'index': idx,
+                'company_name': company_name,
+                'career_page': career_page,
+                'description': description,
+                'label': label,
+                'scraper_class': scraper_class,
+                'rate_limit_key': self._get_rate_limit_key(career_page)
+            })
+
+        if tasks:
+            max_workers = min(len(tasks), self.max_workers)
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_task = {
+                    executor.submit(self._scrape_company_task, task): task for task in tasks
+                }
+
+                for future in as_completed(future_to_task):
+                    task = future_to_task[future]
+                    company_name = task['company_name']
+
+                    try:
+                        result = future.result()
+                    except Exception as exc:
+                        elapsed_time = 0.0
+                        self.log_company_timing(company_name, elapsed_time, 0, 'error')
+                        CrawlerLogger.company_error(str(exc), elapsed_time)
+                        stats['failed'] += 1
+                        self.failed_companies.append({'Company': company_name, 'Reason': f'Unexpected error: {str(exc)[:80]}'})
+                        CrawlerLogger.progress_update(stats['successful'], stats['failed'], stats['total_jobs'], stats['new_jobs'])
+                        continue
+
+                    status = result.get('status')
+                    elapsed_time = result.get('elapsed', 0.0)
+                    jobs = result.get('jobs') or []
+                    issue_type = result.get('issue_type')
+                    status_code = result.get('status_code')
+                    error = result.get('error')
+
+                    if status == 'success':
+                        self.log_request_issue(company_name, 'success', 'Job scraping successful')
+
+                        job_count = len(jobs)
+                        if job_count:
+                            self.log_company_timing(company_name, elapsed_time, job_count, 'success')
+                            CrawlerLogger.jobs_found(job_count, company_name)
+
+                            company_existing_jobs = existing_jobs_by_company.get(company_name)
+                            if company_existing_jobs is None:
+                                company_existing_jobs = set()
+                                existing_jobs_by_company[company_name] = company_existing_jobs
+
+                            new_jobs = [j for j in jobs if j.get('Job Link') not in company_existing_jobs]
+
+                            for job in new_jobs:
+                                job_link = job.get('Job Link')
+                                if job_link:
+                                    existing_jobs.add(job_link)
+                                    company_existing_jobs.add(job_link)
+
+                            stats['new_jobs'] += len(new_jobs)
+                            all_jobs.extend(jobs)
+                            stats['total_jobs'] += job_count
+                            stats['successful'] += 1
+
+                            new_job_titles = [job.get('Job Title', 'Untitled') for job in new_jobs]
+                            CrawlerLogger.company_success(job_count, len(new_jobs), elapsed_time,
+                                                          company_name, new_job_titles)
+                            CrawlerLogger.warning_slow_company(company_name, elapsed_time, job_count)
+                            if elapsed_time > 60:
+                                self.failed_companies.append({
+                                    'Company': company_name,
+                                    'Reason': f'Slow performance: {elapsed_time:.1f}s for {job_count} jobs'
+                                })
+                        else:
+                            self.log_company_timing(company_name, elapsed_time, 0, 'no_jobs')
+                            CrawlerLogger.company_no_jobs(elapsed_time)
+
+                            if elapsed_time > 60:
+                                CrawlerLogger.warning_slow_company(company_name, elapsed_time, 0)
+                                self.failed_companies.append({
+                                    'Company': company_name,
+                                    'Reason': f'Possible scraping issue: {elapsed_time:.1f}s with no jobs'
+                                })
+                                stats['failed'] += 1
+                            else:
+                                self.no_jobs_companies.append({'Company': company_name, 'Time': f'{elapsed_time:.1f}s'})
+                                stats['successful'] += 1
+
+                    else:
+                        issue_type = issue_type or 'connection_error'
+                        if issue_type in ('http_error', 'error'):
+                            issue_type = 'connection_error'
+                        message = str(error) if error else 'Unknown error'
+                        self.log_request_issue(company_name, issue_type, message, status_code)
+                        self.log_company_timing(company_name, elapsed_time, 0, 'error')
+
+                        if error is not None:
+                            CrawlerLogger.scraping_error(company_name, error)
+                        CrawlerLogger.company_error(message, elapsed_time)
+
+                        if elapsed_time > 60:
+                            reason = f'Error + slow performance: {elapsed_time:.1f}s - {message[:50]}'
+                        else:
+                            reason = f'Error: {message[:80]}'
+
+                        stats['failed'] += 1
+                        self.failed_companies.append({'Company': company_name, 'Reason': reason})
+
+                    CrawlerLogger.progress_update(stats['successful'], stats['failed'], stats['total_jobs'], stats['new_jobs'])
+
+                    if self.should_increase_delay():
+                        recommended_delay = self.get_delay_recommendation()
+                        if recommended_delay > self.delay:
+                            CrawlerLogger.warning_rate_limiting(recommended_delay, self.delay)
+
+        if all_jobs:
+            self.save_jobs(all_jobs)
+
         # Final summary
         timing_summary = self.get_timing_summary()
         timing_trends = self.get_timing_trends()
-        
-        CrawlerLogger.completion_summary(stats['successful'], stats['failed'], 
-                                       stats['total_jobs'], stats['new_jobs'], 
-                                       len(self.no_jobs_companies), self.output_dir)
-        
+
+        CrawlerLogger.completion_summary(stats['successful'], stats['failed'],
+                                         stats['total_jobs'], stats['new_jobs'],
+                                         len(self.no_jobs_companies), self.output_dir)
+
         CrawlerLogger.timing_summary(timing_summary, timing_trends)
-        
+
         # Save timing history for future comparisons
         self.save_timing_history()
-        
+
         # Print companies with no jobs (normal, not failures)
         CrawlerLogger.no_jobs_companies_section(self.no_jobs_companies)
-        
+
         # Print failed companies if any (actual problems)
         CrawlerLogger.failed_companies_section(self.failed_companies)
-        
+
         # Print timing statistics if any
         slow_companies = self.get_slow_companies(20.0)  # Companies taking >20s
         CrawlerLogger.timing_statistics_section(timing_summary, timing_trends, slow_companies)
-        
+
         # Print rate limiting issues if any
         if self.rate_limit_issues and self.should_increase_delay():
             recommended_delay = self.get_delay_recommendation()
         else:
             recommended_delay = None
-            
-        CrawlerLogger.rate_limiting_section(self.request_stats, self.rate_limit_issues, 
-                                          self.delay, recommended_delay)
-        
+
+        CrawlerLogger.rate_limiting_section(self.request_stats, self.rate_limit_issues,
+                                            self.delay, recommended_delay)
+
         self.generate_comparison_report()
-        
+
         return all_jobs
     
     def compare_and_backup(self):
