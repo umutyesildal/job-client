@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class BambooHRScraper:
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
         self.session.headers.update({

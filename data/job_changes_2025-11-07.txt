@@ -1,0 +1,66 @@
+
+================================================================================
+📊 JOB CHANGES REPORT
+================================================================================
+📅 Generated: 2025-11-07 09:11:52
+
+📦 Previous: 13872 jobs
+📦 Current:  14161 jobs
+📈 Net change: +289 jobs
+
+🆕 New jobs:     289
+❌ Removed jobs: 0
+✓  Unchanged:    13872
+================================================================================
+
+🎓 NEW STUDENT JOBS (12):
+--------------------------------------------------------------------------------
+  • Robot Operations & Support Working Student / Intern (m/f/d)
+    @ Unknown | Remote, Darmstadt, Germany
+    🔗 https://energy-robotics.jobs.personio.de/job/2417000?language=en
+
+  • Master Thesis Intern (f/m/x)
+    @ Unknown | Essen, Germany
+    🔗 https://greenlyte-carbon-technologies-gmbh.jobs.personio.de/job/2417543?language=en
+
+  • Working Student Supply Chain Management / Inventory and Logistics
+    @ Unknown | Essen, Germany
+    🔗 https://greenlyte-carbon-technologies-gmbh.jobs.personio.de/job/2182233?language=en
+
+  • Praktikant / Werkstudent in der Strategie- und Managementberatung (m/w/d)
+    @ Unknown | Germany
+    🔗 https://job-boards.eu.greenhouse.io/capgeminideutschlandgmbh/jobs/4103854101
+
+  • Business Lead- Internal Technologies
+    @ Unknown | New York City, NY, San Francisco, CA, Seattle, WA
+    🔗 https://job-boards.greenhouse.io/anthropic/jobs/4980156008
+
+  • 2026 - Software Engineering Intern - Internal Engineering, NYC
+    @ Unknown | New York City
+    🔗 https://www.mongodb.com/careers/job/?gh_jid=7335932
+
+  • 2026 - Technical Writer Intern, Dublin
+    @ Unknown | Dublin
+    🔗 https://www.mongodb.com/careers/job/?gh_jid=7292717
+
+  • International Investigations Associate
+    @ Unknown | UK - Remote Zone 1 (Job Requisitions Only)
+    🔗 https://www.coinbase.com/careers/positions/7380057?gh_jid=7380057
+
+  • Software Engineer Intern
+    @ Unknown | London
+    🔗 https://www.coinbase.com/careers/positions/7370475?gh_jid=7370475
+
+  • Werkstudent*in – Research & Development  (alle Identitäten) 15 - 20 Std./Woche
+    @ Unknown | Remote, Berlin
+    🔗 https://goreha.jobs.personio.com/job/2400847
+
+  • Working Student - IoT Live Support (m/f/d)
+    @ Unknown | Product
+    🔗 https://jobs.smartrecruiters.com/EnpalBV/744000092002925-working-student-iot-live-support-m-f-d-
+
+  • Product Manager Assistant (Player Safety) – Internship (6-month) January 2026 (W/M/NB)
+    @ Unknown | Paris, France
+    🔗 https://jobs.smartrecruiters.com/Ubisoft2/744000092108435-product-manager-assistant-player-safety-internship-6-month-january-2026-w-m-nb-
+
+--------------------------------------------------------------------------------

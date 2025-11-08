@@ -22,7 +22,7 @@ class GetroScraper:
     URL format: https://api.getro.com/api/v2/collections/{collection_id}/search/jobs
     """
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
         self.session.headers.update({

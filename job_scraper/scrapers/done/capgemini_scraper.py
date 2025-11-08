@@ -28,7 +28,7 @@ class CapgeminiScraper:
     
     BASE_API_URL = "https://www.capgemini.com/wp-json/macs/v1/jobs"
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
     

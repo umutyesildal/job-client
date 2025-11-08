@@ -31,7 +31,7 @@ class PayPalScraper:
     BASE_API_URL = "https://paypal.eightfold.ai/api/pcsx/search"
     BASE_JOB_URL = "https://paypal.eightfold.ai/careers/job"
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
     

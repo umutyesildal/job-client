@@ -7,12 +7,13 @@ import pandas as pd
 import logging
 from typing import Optional
 import os
+from crawler_logger import CrawlerLogger
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class DatabaseExporter:
+class DataController:
     """Handle exporting jobs to different database systems"""
     
     def __init__(self, csv_path: str = 'output/all_jobs.csv'):
@@ -28,6 +29,67 @@ class DatabaseExporter:
         self.df = pd.read_csv(self.csv_path, encoding='utf-8')
         logger.info(f"Loaded {len(self.df)} jobs from {self.csv_path}")
         return True
+    
+    
+    def load_data_from_csv(self, csv_path: str) -> pd.DataFrame:
+        """Load company data from CSV file"""
+        df = pd.read_csv(csv_path, low_memory=False, dtype=str)
+        
+        # Normalize column names to handle different schemas
+        df = self.normalize_dataframe(df)
+        
+        return df
+    
+    def normalize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """
+        Normalize dataframe column names to handle different schemas
+        Supports both old schema (Name, Website, Career Page) and new schema (Website, Career Page, Active)
+        """
+        # Create a copy to avoid modifying original
+        df = df.copy()
+        
+        # If 'Website' exists but 'Name' doesn't, use Website as Name
+        if 'Website' in df.columns and 'Name' not in df.columns:
+            # Extract domain name from website URL for display
+            df['Name'] = self.extract_domain_name(df['Website'])
+        
+        # Ensure required columns exist
+        required_columns = ['Name', 'Career Page', 'Label']
+        for col in required_columns:
+            if col not in df.columns:
+                CrawlerLogger.missing_column_warning(col)
+                df[col] = 'N/A'
+        
+        # Add Description if missing
+        if 'Description' not in df.columns:
+            df['Description'] = 'N/A'
+        
+        # Filter by Active status if column exists
+        if 'Active' in df.columns:
+            # Filter only active entries
+            active_count = len(df)
+            df = df[df['Active'].str.lower() == 'active'].copy()
+            CrawlerLogger.info_message(f"Filtered to {len(df)} active companies (out of {active_count} total)")
+        
+        return df
+
+    def extract_domain_name(url: str) -> str:
+        """Extract clean domain name from URL for display"""
+        if pd.isna(url) or not url:
+            return 'Unknown'
+        
+        try:
+            # Remove protocol
+            domain = url.replace('https://', '').replace('http://', '')
+            # Remove www.
+            domain = domain.replace('www.', '')
+            # Take first part before /
+            domain = domain.split('/')[0]
+            # Capitalize first letter
+            domain = domain.split('.')[0].capitalize()
+            return domain
+        except:
+            return url
     
     def export_to_sqlite(self, db_path: str = 'jobs.db', table_name: str = 'jobs'):
         """
@@ -61,121 +123,6 @@ class DatabaseExporter:
             
         except Exception as e:
             logger.error(f"Error exporting to SQLite: {e}")
-            return False
-    
-    def export_to_postgresql(self, connection_string: str, table_name: str = 'jobs'):
-        """
-        Export jobs to PostgreSQL database
-        
-        Usage:
-            pip install psycopg2-binary sqlalchemy
-            connection_string = "postgresql://user:password@localhost:5432/jobsdb"
-            exporter.export_to_postgresql(connection_string)
-        """
-        try:
-            from sqlalchemy import create_engine
-            
-            if not self.df is not None or not self.load_csv():
-                return False
-            
-            engine = create_engine(connection_string)
-            
-            # Write to database
-            self.df.to_sql(table_name, engine, if_exists='replace', index=False)
-            
-            logger.info(f"✅ Successfully exported {len(self.df)} jobs to PostgreSQL")
-            return True
-            
-        except ImportError:
-            logger.error("Install required packages: pip install psycopg2-binary sqlalchemy")
-            return False
-        except Exception as e:
-            logger.error(f"Error exporting to PostgreSQL: {e}")
-            return False
-    
-    def export_to_airtable(self, api_key: str, base_id: str, table_name: str = 'Jobs'):
-        """
-        Export jobs to Airtable
-        
-        Usage:
-            pip install pyairtable
-            api_key = 'your_airtable_api_key'
-            base_id = 'your_base_id'
-            exporter.export_to_airtable(api_key, base_id)
-        """
-        try:
-            from pyairtable import Table
-            
-            if not self.df is not None or not self.load_csv():
-                return False
-            
-            table = Table(api_key, base_id, table_name)
-            
-            # Convert DataFrame to list of dicts
-            records = self.df.to_dict('records')
-            
-            # Airtable has a 10-record limit per batch, so we batch it
-            batch_size = 10
-            total_uploaded = 0
-            
-            for i in range(0, len(records), batch_size):
-                batch = records[i:i + batch_size]
-                # Format for Airtable (wrap in 'fields' key)
-                airtable_batch = [{'fields': record} for record in batch]
-                table.batch_create(airtable_batch)
-                total_uploaded += len(batch)
-                logger.info(f"Uploaded {total_uploaded}/{len(records)} jobs to Airtable")
-            
-            logger.info(f"✅ Successfully exported {len(records)} jobs to Airtable")
-            return True
-            
-        except ImportError:
-            logger.error("Install required package: pip install pyairtable")
-            return False
-        except Exception as e:
-            logger.error(f"Error exporting to Airtable: {e}")
-            return False
-    
-    def export_to_mongodb(self, connection_string: str, db_name: str = 'jobcrawler', 
-                         collection_name: str = 'jobs'):
-        """
-        Export jobs to MongoDB
-        
-        Usage:
-            pip install pymongo
-            connection_string = "mongodb://localhost:27017/"
-            exporter.export_to_mongodb(connection_string)
-        """
-        try:
-            from pymongo import MongoClient
-            
-            if not self.df is not None or not self.load_csv():
-                return False
-            
-            client = MongoClient(connection_string)
-            db = client[db_name]
-            collection = db[collection_name]
-            
-            # Convert DataFrame to list of dicts
-            records = self.df.to_dict('records')
-            
-            # Clear existing data and insert new (or use update_many with upsert)
-            collection.delete_many({})
-            collection.insert_many(records)
-            
-            # Create indexes
-            collection.create_index('Job Link')
-            collection.create_index('Company')
-            collection.create_index('Scraped Date')
-            
-            logger.info(f"✅ Successfully exported {len(records)} jobs to MongoDB")
-            return True
-            
-        except ImportError:
-            logger.error("Install required package: pip install pymongo")
-            return False
-        except Exception as e:
-            logger.error(f"Error exporting to MongoDB: {e}")
             return False
     
     def get_stats(self):
@@ -220,7 +167,7 @@ def main():
     
     args = parser.parse_args()
     
-    exporter = DatabaseExporter(args.csv)
+    exporter = DataController(args.csv)
     
     if args.stats:
         exporter.get_stats()

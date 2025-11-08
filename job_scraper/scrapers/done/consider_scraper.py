@@ -34,10 +34,23 @@ class ConsiderScraper:
     entry to fully describe which Consider board to query.
     """
 
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.tracking_file = os.path.join(os.path.dirname(__file__), '..', 'data', 'consider_tracking.json')
         self.session = requests.Session()
+        
+        # Set headers based on browser request analysis
+        self.session.headers.update({
+            'Accept': 'application/json',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Content-Type': 'application/json',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Referer': 'https://talent.cherry.vc/jobs',
+            'Origin': 'https://talent.cherry.vc',
+            'Sec-Fetch-Dest': 'empty',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Site': 'same-origin'
+        })
 
     def load_tracking_data(self) -> Optional[Dict]:
         if os.path.exists(self.tracking_file):
@@ -110,18 +123,30 @@ class ConsiderScraper:
             # perform request with retries
             for attempt in range(max_retries):
                 try:
+                    logger.debug(f'Sending POST to {api_url} with payload: {json.dumps(payload, indent=2)}')
                     resp = self.session.post(api_url, json=payload, timeout=30)
+                    logger.debug(f'Response status: {resp.status_code}')
+                    
+                    if resp.status_code == 403:
+                        logger.warning('403 Forbidden - might need session cookies or different headers')
+                    elif resp.status_code == 429:
+                        logger.warning('429 Rate Limited - waiting longer')
+                        time.sleep(5)
+                        continue
+                        
                     resp.raise_for_status()
                     data = resp.json()
+                    logger.debug(f'Response data keys: {list(data.keys())}')
                     break
                 except Exception as e:
+                    logger.warning(f'Attempt {attempt + 1} failed: {e}')
                     if attempt == max_retries - 1:
                         logger.error(f'Failed after {max_retries} attempts: {e}')
                         if all_jobs:
                             # save partial progress
                             self.save_tracking_data(all_jobs[0].get('Job Link', ''), all_jobs[0].get('Job Title', ''), len(all_jobs))
                         return all_jobs
-                    time.sleep(1)
+                    time.sleep(2 ** attempt)  # exponential backoff
 
             jobs = data.get('jobs', [])
             if not jobs:

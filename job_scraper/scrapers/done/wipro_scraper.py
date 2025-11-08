@@ -29,7 +29,7 @@ class WiproScraper:
     API_URL = "https://careers.wipro.com/services/recruiting/v1/jobs"
     BASE_JOB_URL = "https://careers.wipro.com/careers-home/jobs"
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
     

@@ -24,7 +24,7 @@ class LingodaScraper:
     
     API_URL = "https://lingoda.pinpointhq.com/postings.json"
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
     

@@ -1,0 +1,36 @@
+
+================================================================================
+📊 JOB CHANGES REPORT
+================================================================================
+📅 Generated: 2025-11-06 09:19:23
+
+📦 Previous: 13534 jobs
+📦 Current:  13872 jobs
+📈 Net change: +338 jobs
+
+🆕 New jobs:     338
+❌ Removed jobs: 0
+✓  Unchanged:    13534
+================================================================================
+
+🎓 NEW STUDENT JOBS (9):
+--------------------------------------------------------------------------------
+  • Financial Analyst Working Student
+    @ nan | Munich, BY, DEU
+  • Financial Analyst Intern
+    @ nan | Munich, BY, DEU
+  • AML Intern (f/m/d)
+    @ nan | Berlin, Germany
+  • Internship (m/f/d) Recruiting & Employer Branding
+    @ nan | Darmstadt, Germany
+  • Working Student (m/f/d) Data Annotation
+    @ nan | Remote, Darmstadt, Germany
+  • Head of International GTM Strategy & Operations
+    @ nan | London, UK
+  • Demand Generation Working Student (all genders)
+    @ nan | Berlin
+  • Sales Internship
+    @ nan | Milan
+  • Sales Operations Intern
+    @ nan | Barcelona, Spain
+--------------------------------------------------------------------------------
