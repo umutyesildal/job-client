@@ -209,14 +209,10 @@ class CrawlerLogger:
         
         if recommended_delay:
             logger.info(f"⚡ RECOMMENDATION: Increase delay from {current_delay}s to {recommended_delay}s")
-        
-        logger.info("\n🔍 Recent Issues:")
-        for issue in rate_limit_issues[-10:]:  # Show last 10 issues
-            status_info = f" (Status: {issue['status_code']})" if issue['status_code'] else ""
-            logger.info(f"  • {issue['timestamp']} - {issue['company']}: {issue['issue_type']}{status_info}")
+
         logger.info("="*80)
-    
-    
+
+
     @staticmethod
     def rate_limited_request(company_name: str, status_code: int, current_delay: float):
         """Log rate limited request"""

@@ -227,12 +227,6 @@ class ReportGenerator:
             report_lines.append("")
             report_lines.append(f"⚡ RECOMMENDATION: Increase delay from {current_delay}s to {delay_recommendation}s")
         
-        report_lines.append("")
-        report_lines.append("🔍 Recent Issues:")
-        for issue in rate_limit_issues[-10:]:  # Show last 10 issues
-            status_info = f" (Status: {issue['status_code']})" if issue['status_code'] else ""
-            report_lines.append(f"  • {issue['timestamp']} - {issue['company']}: {issue['issue_type']}{status_info}")
-        
         report_lines.append("-"*80)
     
     @staticmethod

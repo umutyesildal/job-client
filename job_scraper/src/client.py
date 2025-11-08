@@ -26,7 +26,7 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
 import threading
 from datetime import datetime
-from typing import List, Dict
+from typing import List, Dict, Optional
 from urllib.parse import urlparse
 import pandas as pd
 import os
@@ -113,6 +113,8 @@ class JobCrawlerController:
         self.max_workers = max_workers if max_workers and max_workers > 0 else max(1, min(8, (os.cpu_count() or 4)))
         self._rate_limiter = DomainRateLimiter()
         self._request_lock = threading.Lock()
+        self.run_start_time: Optional[float] = None
+        self.run_end_time: Optional[float] = None
 
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
@@ -130,7 +132,8 @@ class JobCrawlerController:
         }
 
         with self._request_lock:
-            self.rate_limit_issues.append(issue_data)
+            if issue_type != 'success':
+                self.rate_limit_issues.append(issue_data)
             self.request_stats['total_requests'] += 1
 
             if issue_type == 'rate_limited':
@@ -188,13 +191,21 @@ class JobCrawlerController:
         
         times = [stat['elapsed_time'] for stat in self.timing_stats]
         job_counts = [stat['job_count'] for stat in self.timing_stats]
-        
+        total_companies = len(self.timing_stats)
+
+        total_scrape_time = sum(times)
+        if self.run_start_time is not None:
+            end_time = self.run_end_time if self.run_end_time is not None else time.time()
+            total_scrape_time = max(0.0, end_time - self.run_start_time)
+
+        avg_time = total_scrape_time / total_companies if total_companies else 0.0
+
         return {
-            'total_companies': len(self.timing_stats),
-            'avg_time': sum(times) / len(times),
+            'total_companies': total_companies,
+            'avg_time': avg_time,
             'max_time': max(times),
             'min_time': min(times),
-            'total_time': sum(times),
+            'total_time': total_scrape_time,
             'avg_jobs': sum(job_counts) / len(job_counts) if job_counts else 0,
             'total_jobs': sum(job_counts)
         }
@@ -226,10 +237,15 @@ class JobCrawlerController:
                 history = []
         
         # Add current run data
+        summary = self.get_timing_summary()
+        avg_time = summary.get('avg_time', 0.0) if summary else 0.0
+        total_time = summary.get('total_time', 0.0) if summary else 0.0
+
         current_run = {
             'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'total_companies': len(self.timing_stats),
-            'avg_time': sum(stat['elapsed_time'] for stat in self.timing_stats) / len(self.timing_stats),
+            'avg_time': avg_time,
+            'total_time': total_time,
             'companies': self.timing_stats
         }
         
@@ -555,6 +571,9 @@ class JobCrawlerController:
         # Compare old data and backup
         self.compare_and_backup()
 
+        self.run_start_time = time.time()
+        self.run_end_time = None
+
         # Load existing jobs grouped by company for faster lookup
         existing_jobs_by_company = self._load_existing_jobs_by_company()
 
@@ -726,6 +745,7 @@ class JobCrawlerController:
             self.save_jobs(all_jobs)
 
         # Final summary
+        self.run_end_time = time.time()
         timing_summary = self.get_timing_summary()
         timing_trends = self.get_timing_trends()
 
