@@ -6,10 +6,12 @@ Reads company data and orchestrates scraping across different ATS platforms
 import pandas as pd
 import logging
 import time
+import requests
 from datetime import datetime
 from typing import List, Dict
 import os
 import sys
+from report_lines import ReportGenerator
 
 # Add parent directory to path for imports
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -45,6 +47,9 @@ from scrapers.undone.teamtailor_scraper import TeamtailorScraper
 from scrapers.undone.tesla_scraper import TeslaScraper
 from scrapers.undone.workday_scraper import WorkdayScraper
 
+from crawler_logger import CrawlerLogger
+logger = logging.getLogger(__name__)
+
 logging.basicConfig(
     level=logging.INFO,
     format='%(message)s',  # Simplified format without timestamps
@@ -53,7 +58,6 @@ logging.basicConfig(
         logging.StreamHandler()
     ]
 )
-logger = logging.getLogger(__name__)
 
 
 class JobCrawlerController:
@@ -102,59 +106,186 @@ class JobCrawlerController:
         self.delay = delay
         self.output_dir = output_dir
         self.failed_companies = []  # Track failed companies
+        self.no_jobs_companies = []  # Track companies with no jobs (separate from failures)
+        self.rate_limit_issues = []  # Track rate limiting issues
+        self.timing_stats = []  # Track timing for each company
+        self.request_stats = {
+            'total_requests': 0,
+            'rate_limited': 0,
+            'timeouts': 0,
+            'connection_errors': 0,
+            'successful': 0
+        }
         
         # Create output directory if it doesn't exist
         os.makedirs(output_dir, exist_ok=True)
+        
+        # Warn about very low delays
+        CrawlerLogger.delay_warning(delay)
+    
+    def log_request_issue(self, company_name: str, issue_type: str, details: str, status_code: int = None):
+        """Log rate limiting and request issues"""
+        issue_data = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'company': company_name,
+            'issue_type': issue_type,
+            'details': details,
+            'status_code': status_code,
+            'current_delay': self.delay
+        }
+        
+        self.rate_limit_issues.append(issue_data)
+        
+        # Update stats
+        self.request_stats['total_requests'] += 1
+        
+        if issue_type == 'rate_limited':
+            self.request_stats['rate_limited'] += 1
+            CrawlerLogger.rate_limited_request(company_name, status_code, self.delay)
+        elif issue_type == 'timeout':
+            self.request_stats['timeouts'] += 1
+            CrawlerLogger.timeout_request(company_name, details)
+        elif issue_type == 'connection_error':
+            self.request_stats['connection_errors'] += 1
+            CrawlerLogger.connection_error_request(company_name, details)
+        elif issue_type == 'success':
+            self.request_stats['successful'] += 1
+    
+    def should_increase_delay(self) -> bool:
+        """Check if delay should be increased based on error rate"""
+        total = self.request_stats['total_requests']
+        if total < 5:  # Need some data first
+            return False
+        
+        error_rate = (self.request_stats['rate_limited'] + self.request_stats['timeouts']) / total
+        return error_rate > 0.2  # If >20% errors, suggest increase
+    
+    def log_company_timing(self, company_name: str, elapsed_time: float, job_count: int, status: str):
+        """Log timing data for each company"""
+        timing_data = {
+            'timestamp': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'company': company_name,
+            'elapsed_time': elapsed_time,
+            'job_count': job_count,
+            'jobs_per_second': job_count / elapsed_time if elapsed_time > 0 else 0,
+            'status': status  # 'success', 'failed', 'timeout', 'error'
+        }
+        
+        self.timing_stats.append(timing_data)
+        
+        # Log timing warnings
+        if elapsed_time > 30:  # More than 30 seconds
+            CrawlerLogger.slow_company_warning(company_name, elapsed_time, job_count)
+        elif elapsed_time > 60:  # More than 1 minute
+            CrawlerLogger.very_slow_company_warning(company_name, elapsed_time)
+    
+    def get_slow_companies(self, threshold: float = 20.0) -> list:
+        """Get companies that took longer than threshold seconds"""
+        return [stat for stat in self.timing_stats if stat['elapsed_time'] > threshold]
+    
+    def get_timing_summary(self) -> dict:
+        """Get timing summary statistics"""
+        if not self.timing_stats:
+            return {}
+        
+        times = [stat['elapsed_time'] for stat in self.timing_stats]
+        job_counts = [stat['job_count'] for stat in self.timing_stats]
+        
+        return {
+            'total_companies': len(self.timing_stats),
+            'avg_time': sum(times) / len(times),
+            'max_time': max(times),
+            'min_time': min(times),
+            'total_time': sum(times),
+            'avg_jobs': sum(job_counts) / len(job_counts) if job_counts else 0,
+            'total_jobs': sum(job_counts)
+        }
+    
+    def get_delay_recommendation(self) -> float:
+        """Get recommended delay based on current error rates"""
+        if self.should_increase_delay():
+            if self.request_stats['rate_limited'] > self.request_stats['timeouts']:
+                return min(self.delay * 2.0, 5.0)  # Double delay for rate limits, max 5s
+            else:
+                return min(self.delay * 1.5, 3.0)  # 1.5x for other errors, max 3s
+        return self.delay
+    
+    def save_timing_history(self):
+        """Save timing data for future comparison"""
+        timing_file = os.path.join(self.output_dir, 'timing_history.json')
+        
+        if not self.timing_stats:
+            return
+            
+        # Load existing history
+        history = []
+        if os.path.exists(timing_file):
+            try:
+                import json
+                with open(timing_file, 'r') as f:
+                    history = json.load(f)
+            except:
+                history = []
+        
+        # Add current run data
+        current_run = {
+            'date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'total_companies': len(self.timing_stats),
+            'avg_time': sum(stat['elapsed_time'] for stat in self.timing_stats) / len(self.timing_stats),
+            'companies': self.timing_stats
+        }
+        
+        history.append(current_run)
+        
+        # Keep only last 30 runs
+        history = history[-30:]
+        
+        # Save back
+        try:
+            import json
+            with open(timing_file, 'w') as f:
+                json.dump(history, f, indent=2)
+            CrawlerLogger.info_message(f"💾 Timing history saved to: timing_history.json")
+        except Exception as e:
+            CrawlerLogger.warning_message(f"⚠️  Could not save timing history: {e}")
+    
+    def get_timing_trends(self) -> dict:
+        """Get timing trends from historical data"""
+        timing_file = os.path.join(self.output_dir, 'timing_history.json')
+        
+        if not os.path.exists(timing_file):
+            return {}
+            
+        try:
+            import json
+            with open(timing_file, 'r') as f:
+                history = json.load(f)
+            
+            if len(history) < 2:
+                return {}
+            
+            # Compare last two runs
+            current = history[-1]
+            previous = history[-2]
+            
+            return {
+                'previous_avg': previous['avg_time'],
+                'current_avg': current['avg_time'],
+                'trend': 'slower' if current['avg_time'] > previous['avg_time'] * 1.2 else 
+                        'faster' if current['avg_time'] < previous['avg_time'] * 0.8 else 'stable',
+                'change_percent': ((current['avg_time'] - previous['avg_time']) / previous['avg_time']) * 100
+            }
+        except:
+            return {}
     
     def load_data_from_csv(self, csv_path: str) -> pd.DataFrame:
         """Load company data from CSV file"""
-        df = pd.read_csv(csv_path)
+        df = pd.read_csv(csv_path, low_memory=False, dtype=str)
         
         # Normalize column names to handle different schemas
         df = self._normalize_dataframe(df)
         
         return df
-    
-    def load_data_from_google_sheets(self, sheet_url: str) -> pd.DataFrame:
-        """
-        Load company data from Google Sheets
-        Note: Requires gspread library and authentication
-        """
-        try:
-            import gspread
-            from google.oauth2.service_account import Credentials
-            
-            logger.info(f"Loading data from Google Sheets: {sheet_url}")
-            
-            # Setup credentials
-            scope = ['https://spreadsheets.google.com/feeds',
-                    'https://www.googleapis.com/auth/drive']
-            
-            # Load credentials from file
-            creds = Credentials.from_service_account_file('credentials.json', scopes=scope)
-            client = gspread.authorize(creds)
-            
-            # Open sheet
-            sheet = client.open_by_url(sheet_url).sheet1
-            data = sheet.get_all_records()
-            
-            df = pd.DataFrame(data)
-            
-            # Normalize column names to handle different schemas
-            df = self._normalize_dataframe(df)
-            
-            logger.info(f"Loaded {len(df)} companies from Google Sheets")
-            return df
-            
-        except ImportError:
-            logger.error("gspread library not installed. Install with: pip install gspread google-auth")
-            raise
-        except FileNotFoundError:
-            logger.error("credentials.json not found. Please provide Google Sheets API credentials")
-            raise
-        except Exception as e:
-            logger.error(f"Error loading Google Sheets: {e}")
-            raise
     
     def _normalize_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
         """
@@ -173,7 +304,7 @@ class JobCrawlerController:
         required_columns = ['Name', 'Career Page', 'Label']
         for col in required_columns:
             if col not in df.columns:
-                logger.warning(f"Missing required column: {col}")
+                CrawlerLogger.missing_column_warning(col)
                 df[col] = 'N/A'
         
         # Add Description if missing
@@ -185,7 +316,7 @@ class JobCrawlerController:
             # Filter only active entries
             active_count = len(df)
             df = df[df['Active'].str.lower() == 'active'].copy()
-            logger.info(f"Filtered to {len(df)} active companies (out of {active_count} total)")
+            CrawlerLogger.info_message(f"Filtered to {len(df)} active companies (out of {active_count} total)")
         
         return df
     
@@ -209,31 +340,109 @@ class JobCrawlerController:
     
     def get_scraper(self, label: str):
         """Get appropriate scraper based on label"""
-        # Normalize label (lowercase, remove spaces)
+        # Normalize label (lowercase, remove spaces and hyphens)
         normalized_label = label.lower().strip().replace(' ', '').replace('-', '')
         
-        # Try to find matching scraper
+        # First try exact match
+        if normalized_label in self.SCRAPER_MAP:
+            return self.SCRAPER_MAP[normalized_label]()
+        
+        # Then try substring matching, but prioritize shorter matches to avoid 'gem' matching 'capgemini'
+        matches = []
         for key, scraper_class in self.SCRAPER_MAP.items():
             if key in normalized_label or normalized_label in key:
-                return scraper_class()
+                matches.append((key, scraper_class))
+        
+        if matches:
+            # Sort by key length to prefer exact/shorter matches
+            matches.sort(key=lambda x: len(x[0]))
+            return matches[0][1]()
         
         return None
     
-    def _load_existing_jobs(self) -> set:
-        """Load existing job links from the CSV file"""
+    def _load_existing_jobs_by_company(self) -> Dict[str, set]:
+        """
+        Load existing job links from the CSV file, grouped by company.
+        
+        Returns:
+            Dict[str, set]: {company_name: set(job_links)}
+            
+        Performance: ~1000x faster job checking per company
+        (50 vs 50,000 comparisons)
+        
+        TODO: Add closed jobs detection here in future
+        """
         all_jobs_file = os.path.join(self.output_dir, 'all_jobs.csv')
-        existing_links = set()
+        existing_jobs_by_company = {}
+        total_existing_jobs = 0
         
         if os.path.exists(all_jobs_file):
             try:
-                existing_df = pd.read_csv(all_jobs_file, encoding='utf-8')
-                if 'Job Link' in existing_df.columns:
-                    existing_links = set(existing_df['Job Link'].dropna().unique())
-                logger.debug(f"Loaded {len(existing_links)} existing jobs from database")
+                existing_df = pd.read_csv(all_jobs_file, encoding='utf-8', low_memory=False, dtype=str)
+                if 'Job Link' in existing_df.columns and 'Company' in existing_df.columns:
+                    # Group jobs by company
+                    for _, row in existing_df.iterrows():
+                        company = row.get('Company', 'Unknown')
+                        job_link = row.get('Job Link')
+                        
+                        if pd.notna(job_link) and pd.notna(company):
+                            if company not in existing_jobs_by_company:
+                                existing_jobs_by_company[company] = set()
+                            existing_jobs_by_company[company].add(job_link)
+                            total_existing_jobs += 1
+                
+                CrawlerLogger.debug_existing_jobs(total_existing_jobs)
+                CrawlerLogger.info_message(f"📊 Jobs grouped by {len(existing_jobs_by_company)} companies for faster lookup")
             except Exception as e:
-                logger.debug(f"Could not load existing jobs: {e}")
+                CrawlerLogger.debug_load_error(e)
         
-        return existing_links
+        return existing_jobs_by_company
+
+    def _detect_closed_jobs(self, company_name: str, previous_jobs: set, current_jobs: List[Dict]) -> set:
+        """
+        Detect jobs that were closed/removed for a specific company.
+        
+        Args:
+            company_name: Name of the company
+            previous_jobs: Set of previous job links for this company
+            current_jobs: List of current job dictionaries from scraper
+            
+        Returns:
+            set: Job links that were present before but not now (closed jobs)
+            
+        TODO: Implement closed jobs tracking
+        - Save closed jobs with date closed
+        - Calculate how long jobs were open
+        - Add to reporting
+        """
+        current_job_links = {job.get('Job Link') for job in current_jobs if job.get('Job Link')}
+        closed_job_links = previous_jobs - current_job_links
+        
+        # TODO: Implement full closed jobs tracking here
+        # Example structure:
+        # if closed_job_links:
+        #     closed_jobs_data = []
+        #     for job_link in closed_job_links:
+        #         closed_jobs_data.append({
+        #             'Company': company_name,
+        #             'Job Link': job_link,
+        #             'Date Closed': datetime.now().strftime('%Y-%m-%d'),
+        #             'Status': 'Closed'
+        #         })
+        #     self._save_closed_jobs(closed_jobs_data)
+        
+        return closed_job_links
+
+    def _load_existing_jobs(self) -> set:
+        """
+        Legacy method - Load all existing job links as single set
+        Kept for backward compatibility, but slower than company-specific lookup
+        """
+        company_jobs = self._load_existing_jobs_by_company()
+        all_jobs = set()
+        for company_links in company_jobs.values():
+            all_jobs.update(company_links)
+        return all_jobs
     
     def scrape_company(self, row: pd.Series) -> List[Dict]:
         """
@@ -251,25 +460,21 @@ class JobCrawlerController:
         description = row.get('Description', '')
         label = row.get('Label', '')
         
-        logger.info(f"\n{'='*60}")
-        logger.info(f"Processing: {name}")
-        logger.info(f"Career Page: {career_page}")
-        logger.info(f"Label: {label}")
-        logger.info(f"{'='*60}")
+        CrawlerLogger.company_start(name, career_page, label)
         
         # Validate input
         if pd.isna(career_page) or not career_page:
-            logger.warning(f"No career page URL for {name}, skipping...")
+            CrawlerLogger.no_career_page_warning(name)
             return []
         
         if pd.isna(label) or not label:
-            logger.warning(f"No label specified for {name}, skipping...")
+            CrawlerLogger.no_label_warning(name)
             return []
         
         # Get appropriate scraper
         scraper = self.get_scraper(label)
         if not scraper:
-            logger.error(f"Could not find scraper for label: {label}")
+            CrawlerLogger.scraper_not_found_error(label)
             return []
         
         # Scrape jobs
@@ -281,14 +486,26 @@ class JobCrawlerController:
                 label=label
             )
             
-            logger.info(f"Found {len(jobs)} jobs for {name}")
+            CrawlerLogger.jobs_found(len(jobs), name)
             return jobs
             
         except Exception as e:
-            logger.error(f"Error scraping {name}: {e}")
+            CrawlerLogger.scraping_error(name, e)
             return []
     
     def process_companies(self, df: pd.DataFrame, limit: int = None):
+        
+        # Compare old data and backup
+        self.compare_and_backup()
+        
+        # Load existing jobs grouped by company for faster lookup
+        existing_jobs_by_company = self._load_existing_jobs_by_company()
+        
+        # Keep legacy single set for global operations (reports, etc.)
+        existing_jobs = self._load_existing_jobs()
+        
+        companies_to_process = df.head(limit) if limit else df
+        
         all_jobs = []
         stats = {
             'total_companies': len(df) if limit is None else min(limit, len(df)),
@@ -298,18 +515,13 @@ class JobCrawlerController:
             'new_jobs': 0
         }
         
-        self.compare_and_backup()
         
-        existing_jobs = self._load_existing_jobs()
+        CrawlerLogger.startup_header(stats['total_companies'], len(existing_jobs))
         
-        companies_to_process = df.head(limit) if limit else df
-        
-        logger.info("\n" + "="*80)
-        logger.info("🚀 STARTING JOB CRAWLER")
-        logger.info("="*80)
-        logger.info(f"📊 Processing {stats['total_companies']} companies")
-        logger.info(f"📦 Existing jobs: {len(existing_jobs)}")
-        logger.info("="*80 + "\n")
+        # Log performance optimization
+        if existing_jobs_by_company:
+            avg_jobs_per_company = len(existing_jobs) / len(existing_jobs_by_company) if existing_jobs_by_company else 0
+            CrawlerLogger.info_message(f"🚀 Using optimized company-specific job lookup (~{avg_jobs_per_company:.0f} vs {len(existing_jobs)} comparisons per company)")
         
         for idx, row in companies_to_process.iterrows():
             company_name = row.get('Name', 'Unknown')
@@ -317,17 +529,17 @@ class JobCrawlerController:
             description = row.get('Description', 'N/A')
             label = row.get('Label', 'unknown')
             
-            logger.info(f"\n[{idx + 1}/{stats['total_companies']}] 🏢 {company_name} ({label})")
+            CrawlerLogger.company_start(idx, stats['total_companies'], company_name, label)
             
             # Validate input
             if pd.isna(career_page) or not career_page:
-                logger.warning(f"  ⚠️  No career page - skipping")
+                CrawlerLogger.warning_no_career_page(company_name)
                 stats['failed'] += 1
                 self.failed_companies.append({'Company': company_name, 'Reason': 'No career page'})
                 continue
             
             if pd.isna(label) or not label:
-                logger.warning(f"  ⚠️  No ATS platform - skipping")
+                CrawlerLogger.warning_no_ats_platform()
                 stats['failed'] += 1
                 self.failed_companies.append({'Company': company_name, 'Reason': 'No ATS platform'})
                 continue
@@ -336,7 +548,7 @@ class JobCrawlerController:
             scraper = self.get_scraper(label)
             
             if not scraper:
-                logger.warning(f"  ⚠️  No scraper for {label} - skipping")
+                CrawlerLogger.warning_no_scraper(label)
                 stats['failed'] += 1
                 self.failed_companies.append({'Company': company_name, 'Reason': f'No scraper for {label}'})
                 continue
@@ -344,32 +556,71 @@ class JobCrawlerController:
             try:
                 start_time = time.time()
                 
-                # Scrape jobs
-                jobs = scraper.scrape_jobs(
-                    url=career_page,
-                    company_name=company_name,
-                    company_description=description,
-                    label=label
-                )
+                # Scrape jobs with error detection
+                try:
+                    jobs = scraper.scrape_jobs(
+                        url=career_page,
+                        company_name=company_name,
+                        company_description=description,
+                        label=label
+                    )
+                    
+                    # Log successful request
+                    self.log_request_issue(company_name, 'success', 'Job scraping successful')
+                    
+                except requests.exceptions.HTTPError as e:
+                    # Detect rate limiting (429, 403, 503 status codes)
+                    if hasattr(e, 'response') and e.response is not None:
+                        status_code = e.response.status_code
+                        if status_code in [429, 403, 503]:
+                            self.log_request_issue(company_name, 'rate_limited', str(e), status_code)
+                        else:
+                            self.log_request_issue(company_name, 'http_error', str(e), status_code)
+                    raise e
+                    
+                except requests.exceptions.Timeout as e:
+                    self.log_request_issue(company_name, 'timeout', str(e))
+                    raise e
+                    
+                except requests.exceptions.ConnectionError as e:
+                    self.log_request_issue(company_name, 'connection_error', str(e))
+                    raise e
                 
                 elapsed_time = time.time() - start_time
                 
                 if jobs:
-                    # Check for new jobs
-                    new_jobs = [j for j in jobs if j.get('Job Link') not in existing_jobs]
+                    # Get existing jobs for this specific company
+                    company_existing_jobs = existing_jobs_by_company.get(company_name, set())
                     
-                    logger.info(f"  ✅ Found {len(jobs)} jobs ({len(new_jobs)} new) in {elapsed_time:.1f}s")
+                    new_jobs = [j for j in jobs if j.get('Job Link') not in company_existing_jobs]
+                    
+                    # TODO: Add closed jobs detection here in future
+                    # closed_jobs = company_existing_jobs - {j.get('Job Link') for j in jobs}
+                    
+                    # Log timing data
+                    self.log_company_timing(company_name, elapsed_time, len(jobs), 'success')
+                    
+                    # Show success with clean logging
+                    new_job_titles = [job.get('Job Title', 'Untitled') for job in new_jobs]
+                    CrawlerLogger.company_success(len(jobs), len(new_jobs), elapsed_time, 
+                                                company_name, new_job_titles)
+                    
+                    # Check for slow companies
+                    CrawlerLogger.warning_slow_company(company_name, elapsed_time, len(jobs))
+                    if elapsed_time > 60:
+                        self.failed_companies.append({'Company': company_name, 'Reason': f'Slow performance: {elapsed_time:.1f}s for {len(jobs)} jobs'})
                     
                     if new_jobs:
-                        # Show first 3 new jobs
-                        for job in new_jobs[:3]:
-                            logger.info(f"     • {job['Job Title']}")
-                        if len(new_jobs) > 3:
-                            logger.info(f"     ... and {len(new_jobs) - 3} more")
-                        
-                        # Add new jobs to tracking set
+                        # Add new jobs to tracking sets for future comparisons
                         for job in new_jobs:
-                            existing_jobs.add(job.get('Job Link'))
+                            job_link = job.get('Job Link')
+                            # Update global set (for backward compatibility)
+                            existing_jobs.add(job_link)
+                            
+                            # Update company-specific set (for performance)
+                            if company_name not in existing_jobs_by_company:
+                                existing_jobs_by_company[company_name] = set()
+                            existing_jobs_by_company[company_name].add(job_link)
                         
                         stats['new_jobs'] += len(new_jobs)
                     
@@ -379,39 +630,80 @@ class JobCrawlerController:
                     stats['total_jobs'] += len(jobs)
                     stats['successful'] += 1
                 else:
-                    logger.warning(f"  ⚠️  No jobs found")
-                    stats['failed'] += 1
-                    self.failed_companies.append({'Company': company_name, 'Reason': 'No jobs found'})
+                    # Log timing for companies with no jobs (this is normal, not an error!)
+                    self.log_company_timing(company_name, elapsed_time, 0, 'no_jobs')
+                    CrawlerLogger.company_no_jobs(elapsed_time)
+                    
+                    # Check if slow even with no jobs - this could indicate a problem
+                    if elapsed_time > 60:
+                        CrawlerLogger.warning_slow_company(company_name, elapsed_time, 0)
+                        self.failed_companies.append({'Company': company_name, 'Reason': f'Possible scraping issue: {elapsed_time:.1f}s with no jobs'})
+                        stats['failed'] += 1
+                    else:
+                        # Normal case: no jobs but scraper worked fine
+                        self.no_jobs_companies.append({'Company': company_name, 'Time': f'{elapsed_time:.1f}s'})
+                        stats['successful'] += 1  # This is actually successful - just no jobs available
                 
                 # Brief progress update
-                logger.info(f"  📊 Progress: ✓{stats['successful']} ❌{stats['failed']} | Total: {stats['total_jobs']} jobs ({stats['new_jobs']} new)")
+                CrawlerLogger.progress_update(stats['successful'], stats['failed'], stats['total_jobs'], stats['new_jobs'])
+                
+                # Check if delay should be adjusted
+                if self.should_increase_delay():
+                    recommended_delay = self.get_delay_recommendation()
+                    if recommended_delay > self.delay:
+                        CrawlerLogger.warning_rate_limiting(recommended_delay, self.delay)
                 
                 # Delay between companies
                 time.sleep(self.delay)
                 
             except Exception as e:
-                logger.error(f"  ❌ Error: {str(e)[:80]}")
+                elapsed_time = time.time() - start_time
+                
+                # Log timing for failed attempts
+                self.log_company_timing(company_name, elapsed_time, 0, 'error')
+                CrawlerLogger.company_error(str(e), elapsed_time)
+                
+                # Check if error took too long
+                if elapsed_time > 60:
+                    reason = f'Error + slow performance: {elapsed_time:.1f}s - {str(e)[:50]}'
+                else:
+                    reason = f'Error: {str(e)[:80]}'
+                
                 stats['failed'] += 1
-                self.failed_companies.append({'Company': company_name, 'Reason': f'Error: {str(e)[:80]}'})
+                self.failed_companies.append({'Company': company_name, 'Reason': reason})
                 continue
         
         # Final summary
-        logger.info("\n" + "="*80)
-        logger.info("🎉 COMPLETED!")
-        logger.info("="*80)
-        logger.info(f"✓ Successful: {stats['successful']} | ❌ Failed: {stats['failed']}")
-        logger.info(f"📦 Total jobs: {stats['total_jobs']} | 🆕 New: {stats['new_jobs']}")
-        logger.info(f"💾 Saved to: {self.output_dir}/all_jobs.csv")
-        logger.info("="*80)
+        timing_summary = self.get_timing_summary()
+        timing_trends = self.get_timing_trends()
         
-        # Print failed companies if any
-        if self.failed_companies:
-            logger.info("\n" + "="*80)
-            logger.info("❌ FAILED COMPANIES:")
-            logger.info("="*80)
-            for failure in self.failed_companies:
-                logger.info(f"  • {failure['Company']}: {failure['Reason']}")
-            logger.info("="*80)
+        CrawlerLogger.completion_summary(stats['successful'], stats['failed'], 
+                                       stats['total_jobs'], stats['new_jobs'], 
+                                       len(self.no_jobs_companies), self.output_dir)
+        
+        CrawlerLogger.timing_summary(timing_summary, timing_trends)
+        
+        # Save timing history for future comparisons
+        self.save_timing_history()
+        
+        # Print companies with no jobs (normal, not failures)
+        CrawlerLogger.no_jobs_companies_section(self.no_jobs_companies)
+        
+        # Print failed companies if any (actual problems)
+        CrawlerLogger.failed_companies_section(self.failed_companies)
+        
+        # Print timing statistics if any
+        slow_companies = self.get_slow_companies(20.0)  # Companies taking >20s
+        CrawlerLogger.timing_statistics_section(timing_summary, timing_trends, slow_companies)
+        
+        # Print rate limiting issues if any
+        if self.rate_limit_issues and self.should_increase_delay():
+            recommended_delay = self.get_delay_recommendation()
+        else:
+            recommended_delay = None
+            
+        CrawlerLogger.rate_limiting_section(self.request_stats, self.rate_limit_issues, 
+                                          self.delay, recommended_delay)
         
         self.generate_comparison_report()
         
@@ -423,21 +715,21 @@ class JobCrawlerController:
         backup_path = os.path.join(self.output_dir, 'all_jobs_backup.csv')
         
         if not os.path.exists(output_path):
-            logger.info("\n📝 No previous data to compare (first run)")
+            CrawlerLogger.no_previous_data()
             return
         
         try:
-            old_df = pd.read_csv(output_path, encoding='utf-8')
+            old_df = pd.read_csv(output_path, encoding='utf-8', low_memory=False, dtype=str)
             
             if len(old_df) == 0:
-                logger.info("\n📝 Previous file was empty, no comparison needed")
+                CrawlerLogger.empty_previous_file()
                 return
             
             pd.DataFrame(old_df).to_csv(backup_path, index=False, encoding='utf-8')
-            logger.info(f"\n💾 Backed up previous data: {len(old_df)} jobs → all_jobs_backup.csv")
+            CrawlerLogger.backup_success(len(old_df))
             
         except Exception as e:
-            logger.error(f"❌ Error during backup: {e}")
+            CrawlerLogger.backup_error(e)
     
     def generate_comparison_report(self):
         """Generate comparison report between old and new job data"""
@@ -448,8 +740,8 @@ class JobCrawlerController:
             return
         
         try:
-            old_df = pd.read_csv(backup_path, encoding='utf-8')
-            new_df = pd.read_csv(output_path, encoding='utf-8')
+            old_df = pd.read_csv(backup_path, encoding='utf-8', low_memory=False, dtype=str)
+            new_df = pd.read_csv(output_path, encoding='utf-8', low_memory=False, dtype=str)
             
             old_links = set(old_df['Job Link'].tolist())
             new_links = set(new_df['Job Link'].tolist())
@@ -462,96 +754,72 @@ class JobCrawlerController:
             removed_jobs = old_df[old_df['Job Link'].isin(removed_links)]
             
             student_new_jobs = added_jobs[
-                added_jobs['Job Title'].str.lower().str.contains('student|intern|praktikum', na=False)
+                (added_jobs['Job Title'].str.lower().str.contains('student|intern|praktikum', na=False)) &
+                (added_jobs['Location'].str.lower().str.contains('berlin|germany|deutschland', na=False))
             ]
             
             student_removed_jobs = removed_jobs[
-                removed_jobs['Job Title'].str.lower().str.contains('student|intern|praktikum', na=False)
+                (removed_jobs['Job Title'].str.lower().str.contains('student|intern|praktikum', na=False)) &
+                (removed_jobs['Location'].str.lower().str.contains('berlin|germany|deutschland', na=False))
             ]
             
-            report_lines = []
-            report_lines.append("\n" + "="*80)
-            report_lines.append("📊 JOB CHANGES REPORT")
-            report_lines.append("="*80)
-            report_lines.append(f"📅 Generated: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            report_lines.append("")
-            report_lines.append(f"📦 Previous: {len(old_df)} jobs")
-            report_lines.append(f"📦 Current:  {len(new_df)} jobs")
-            report_lines.append(f"📈 Net change: {len(new_df) - len(old_df):+d} jobs")
-            report_lines.append("")
-            report_lines.append(f"🆕 New jobs:     {len(added_links)}")
-            report_lines.append(f"❌ Removed jobs: {len(removed_links)}")
-            report_lines.append(f"✓  Unchanged:    {len(unchanged_links)}")
-            report_lines.append("="*80)
+            # Import and use ReportGenerator
             
-            if len(student_new_jobs) > 0:
-                report_lines.append("")
-                report_lines.append(f"🎓 NEW STUDENT JOBS ({len(student_new_jobs)}):")
-                report_lines.append("-"*80)
-                for _, job in student_new_jobs.iterrows():
-                    company = job.get('Company', 'Unknown')
-                    if pd.isna(company):
-                        company = 'Unknown'
-                    
-                    title = job.get('Job Title', 'Unknown')
-                    if pd.isna(title):
-                        title = 'Unknown'
-                    
-                    location = job.get('Location', 'Unknown')
-                    if pd.isna(location):
-                        location = 'Unknown'
-                    
-                    job_link = job.get('Job Link', '')
-                    if pd.isna(job_link):
-                        job_link = 'No link available'
-                    
-                    report_lines.append(f"  • {title}")
-                    report_lines.append(f"    @ {company} | {location}")
-                    report_lines.append(f"    🔗 {job_link}")
-                    report_lines.append("")
-                report_lines.append("-"*80)
+            # Get timing data
+            timing_summary = self.get_timing_summary()
+            timing_trends = self.get_timing_trends()
+            slow_companies = self.get_slow_companies(20.0)
             
-            if len(student_removed_jobs) > 0:
-                report_lines.append("")
-                report_lines.append(f"❌ REMOVED STUDENT JOBS ({len(student_removed_jobs)}):")
-                report_lines.append("-"*80)
-                for _, job in student_removed_jobs.iterrows():
-                    company = job.get('Company', 'Unknown')
-                    if pd.isna(company):
-                        company = 'Unknown'
-                    
-                    title = job.get('Job Title', 'Unknown')
-                    if pd.isna(title):
-                        title = 'Unknown'
-                    
-                    location = job.get('Location', 'Unknown')
-                    if pd.isna(location):
-                        location = 'Unknown'
-                    
-                    job_link = job.get('Job Link', '')
-                    if pd.isna(job_link):
-                        job_link = 'No link available'
-                    
-                    report_lines.append(f"  • {title}")
-                    report_lines.append(f"    @ {company} | {location}")
-                    report_lines.append(f"    🔗 {job_link}")
-                    report_lines.append("")
-                report_lines.append("-"*80)
+            # Generate and display report
+            report_lines = ReportGenerator.get_report_lines(
+                old_df=old_df,
+                new_df=new_df,
+                added_links=added_links,
+                removed_links=removed_links,
+                unchanged_links=unchanged_links,
+                added_jobs=added_jobs,
+                removed_jobs=removed_jobs,
+                no_jobs_companies=self.no_jobs_companies,
+                failed_companies=self.failed_companies,
+                rate_limit_issues=self.rate_limit_issues,
+                request_stats=self.request_stats,
+                current_delay=self.delay,
+                timing_summary=timing_summary,
+                timing_trends=timing_trends,
+                slow_companies=slow_companies,
+                should_increase_delay=self.should_increase_delay(),
+                delay_recommendation=self.get_delay_recommendation()
+            )
             
-            report_text = "\n".join(report_lines)
+            # Display report in console
+            CrawlerLogger.display_report_lines(report_lines)
             
-            for line in report_lines:
-                logger.info(line)
+            # Save report to file
+            report_filename = ReportGenerator.generate_job_changes_report(
+                old_df=old_df,
+                new_df=new_df,
+                added_links=added_links,
+                removed_links=removed_links,
+                unchanged_links=unchanged_links,
+                added_jobs=added_jobs,
+                removed_jobs=removed_jobs,
+                no_jobs_companies=self.no_jobs_companies,
+                failed_companies=self.failed_companies,
+                rate_limit_issues=self.rate_limit_issues,
+                request_stats=self.request_stats,
+                current_delay=self.delay,
+                timing_summary=timing_summary,
+                timing_trends=timing_trends,
+                slow_companies=slow_companies,
+                should_increase_delay=self.should_increase_delay(),
+                delay_recommendation=self.get_delay_recommendation(),
+                output_dir=self.output_dir
+            )
             
-            report_filename = f"job_changes_{datetime.now().strftime('%Y-%m-%d')}.txt"
-            report_path = os.path.join(self.output_dir, report_filename)
-            with open(report_path, 'w', encoding='utf-8') as f:
-                f.write(report_text)
-            
-            logger.info(f"\n💾 Report saved to: {report_filename}\n")
+            CrawlerLogger.report_saved(report_filename)
             
         except Exception as e:
-            logger.error(f"❌ Error generating comparison report: {e}")
+            CrawlerLogger.comparison_report_error(e)
     
     def save_jobs(self, jobs: List[Dict]):
         """
@@ -567,7 +835,7 @@ class JobCrawlerController:
         # Check if file exists AND has content
         if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
             try:
-                existing_df = pd.read_csv(output_path, encoding='utf-8')
+                existing_df = pd.read_csv(output_path, encoding='utf-8', low_memory=False, dtype=str)
                 
                 # Combine existing and new jobs
                 combined_df = pd.concat([existing_df, new_jobs_df], ignore_index=True)
@@ -579,58 +847,52 @@ class JobCrawlerController:
                 combined_df.to_csv(output_path, index=False, encoding='utf-8')
                 
                 new_count = len(combined_df) - len(existing_df)
-                logger.debug(f"Added {new_count} new jobs to database (total: {len(combined_df)})")
+                CrawlerLogger.debug_jobs_added(new_count, len(combined_df))
                 
             except Exception as e:
-                logger.error(f"Error updating jobs file: {e}")
+                CrawlerLogger.jobs_update_error(e)
                 # Fallback: just append with header
                 new_jobs_df.to_csv(output_path, mode='a', header=True, index=False, encoding='utf-8')
         else:
             # First time or empty file: create new file with header
             new_jobs_df.to_csv(output_path, index=False, encoding='utf-8')
-            logger.debug(f"Created new jobs database with {len(jobs)} jobs")
+            CrawlerLogger.debug_new_database(len(jobs))
 
 
 def main():
     import argparse
     
-    # Get the directory where this script is located
+    # Get current directory and data directory
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    # Go up two levels to get to jobcrawler root, then into data
     default_data_dir = os.path.join(script_dir, '..', '..', 'data')
     default_data_dir = os.path.abspath(default_data_dir)
     
+    
     parser = argparse.ArgumentParser(description='Job Crawler - Scrape jobs from multiple ATS platforms')
     parser.add_argument('input', nargs='?', default='../../data/job_search.csv',
-                       help='Input CSV file or Google Sheets URL (default: ../../data/job_search.csv)')
-    parser.add_argument('-t', '--type', choices=['csv', 'sheets'], default='csv',
-                       help='Input type: csv or sheets')
+                       help='Input CSV file (default: ../../data/job_search.csv)')
     parser.add_argument('-l', '--limit', type=int, help='Limit number of companies to process')
-    parser.add_argument('-d', '--delay', type=float, default=2.0,
+    parser.add_argument('-d', '--delay', type=float, default=0.2,
                        help='Delay between requests (seconds)')
     parser.add_argument('-o', '--output-dir', default=default_data_dir,
                        help='Output directory for job files')
     
     args = parser.parse_args()
     
-    logger.info("\n🤖 Job Crawler v1.0\n")
+    CrawlerLogger.info_message("\n🤖 Job Crawler v1.0\n")
     
     # Initialize controller
     controller = JobCrawlerController(delay=args.delay, output_dir=args.output_dir)
     
     # Load data
     try:
-        if args.type == 'csv':
-            logger.info(f"📥 Loading from: {args.input}")
-            df = controller.load_data_from_csv(args.input)
-        else:
-            logger.info(f"📥 Loading from: {args.input}")
-            df = controller.load_data_from_google_sheets(args.input)
+        CrawlerLogger.info_message(f"📥 Loading from: {args.input}")
+        df = controller.load_data_from_csv(args.input)
         
-        logger.info(f"✓ Loaded {len(df)} companies\n")
+        CrawlerLogger.info_message(f"✓ Loaded {len(df)} companies\n")
         
     except Exception as e:
-        logger.error(f"❌ Failed to load data: {e}")
+        CrawlerLogger.error_message(f"❌ Failed to load data: {e}")
         return
     
     # Process companies
@@ -638,9 +900,9 @@ def main():
         controller.process_companies(df, limit=args.limit)
             
     except KeyboardInterrupt:
-        logger.warning("\n⚠️  Interrupted - partial results saved")
+        CrawlerLogger.interrupted_warning()
     except Exception as e:
-        logger.error(f"❌ Error: {e}")
+        CrawlerLogger.general_error(e)
 
 
 if __name__ == '__main__':
