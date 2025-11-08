@@ -21,7 +21,7 @@ class GemScraper:
     URL format: https://jobs.gem.com/{boardId}
     """
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
         self.api_url = "https://jobs.gem.com/api/public/graphql/batch"

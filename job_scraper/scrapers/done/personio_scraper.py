@@ -21,7 +21,7 @@ class PersonioScraper:
     URL format: https://{company}.jobs.personio.com/search.json
     """
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
     

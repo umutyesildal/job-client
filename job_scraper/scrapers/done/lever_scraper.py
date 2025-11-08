@@ -22,7 +22,7 @@ class LeverScraper:
     URL format: https://api.lever.co/v0/postings/{company} or https://api.eu.lever.co/v0/postings/{company}
     """
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
     

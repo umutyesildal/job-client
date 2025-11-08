@@ -22,7 +22,7 @@ class HiBobScraper:
     URL format: https://{company}.careers.hibob.com/
     """
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
     

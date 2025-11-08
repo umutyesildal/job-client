@@ -30,7 +30,7 @@ class StripeScraper:
     BASE_API_URL = "https://stripe.com/jobs/search"
     BASE_JOB_URL = "https://stripe.com/jobs"
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
     

@@ -22,7 +22,7 @@ class JoinScraper:
     URL format: https://join.com/api/public/companies/{companyId}/jobs
     """
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
     
@@ -71,7 +71,7 @@ class JoinScraper:
         # Set headers to mimic browser request
         headers = {
             'accept': 'application/json, text/plain, */*',
-            'accept-encoding': 'gzip, deflate, br, zstd',
+            'accept-encoding': 'gzip, deflate',  # Remove br to avoid compression issues
             'accept-language': 'en-US,en;q=0.9,tr;q=0.8',
             'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/141.0.0.0 Safari/537.36',
             'referer': f'https://join.com/companies/{company_id}'
@@ -93,7 +93,19 @@ class JoinScraper:
             try:
                 response = self.session.get(api_url, headers=headers, params=params, timeout=30)
                 response.raise_for_status()
-                data = response.json()
+                
+                # Debug response
+                logger.debug(f"Response status: {response.status_code}")
+                logger.debug(f"Response headers: {dict(response.headers)}")
+                logger.debug(f"Response content type: {response.headers.get('content-type')}")
+                
+                # Handle JSON parsing with better error handling
+                try:
+                    data = response.json()
+                except ValueError as e:
+                    logger.error(f"JSON parsing error: {e}")
+                    logger.error(f"Response text[:500]: {response.text[:500]}")
+                    break
                 
                 items = data.get('items', [])
                 pagination = data.get('pagination', {})

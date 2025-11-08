@@ -22,7 +22,7 @@ class SmartRecruitarsScraper:
     URL format: https://careers.smartrecruiters.com/{company}/{section}/api/groups?page={n}
     """
     
-    def __init__(self, delay: float = 1.0):
+    def __init__(self, delay: float = 0.2):
         self.delay = delay
         self.session = requests.Session()
     

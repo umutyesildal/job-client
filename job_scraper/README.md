@@ -1,62 +1,68 @@
-# Job Crawler
+# Job Scraper Engine
 
-Scrapes job listings from 19+ ATS platforms.
+Core scraping engine with 23 ATS platform implementations.
 
-## Status
-
-### ✅ Working (6 platforms)
-- **Ashby** - API-based
-- **Greenhouse** - API-based  
-- **Workable** - API-based
-- **Recruitee** - API-based
-- **BambooHR** - API-based
-- **Consider/Cherry VC** - API with pagination
-
-### ❌ Not Working (13 platforms)
-- Lever, Workday, Personio, SmartRecruiters, Teamtailor, HiBob, Join, Gem, Getro, Rippling, Softgarden, Generic ATS
-
-## Structure
+## Architecture
 
 ```
 job_scraper/
-├── scrapers/
-│   ├── done/          # 6 working scrapers
-│   ├── undone/        # 13 not implemented
-│   └── template_scraper.py
-└── src/
-    └── main_crawler.py
+├── scrapers/done/         # 23 working implementations
+├── scrapers/undone/       # 6 incomplete implementations
+├── scrapers/template_scraper.py
+└── src/main_crawler.py    # Orchestration engine
 ```
 
-## Usage
+## Implementation Status
+
+**✅ Production Ready (23)**:  
+Amazon, Ashby, BambooHR, Capgemini, Consider, Gem, Getro, Greenhouse, HiBob, Join, Lever, Lingoda, Microsoft, PayPal, Personio, Recruitee, Rippling, SmartRecruiters, Stripe, Trade Republic, Wipro, Workable
+
+**❌ Incomplete (6)**:  
+Meta, Softgarden, Teamtailor, Tesla, Workday, Generic ATS
+
+## Standard Interface
+
+All scrapers implement the same interface:
+
+```python
+def scrape_jobs(self, url: str, company_name: str, 
+                company_description: str = '', label: str = '') -> List[Dict]:
+    """Return list of standardized job dictionaries"""
+```
+
+Output format:
+```python
+{
+    'Company Name': str,
+    'Job Title': str,
+    'Location': str,
+    'Job Link': str,
+    'Job Description': str,
+    'Employment Type': str,
+    'Department': str,
+    'Posted Date': str,      # YYYY-MM-DD
+    'Company Description': str,
+    'Remote': str,          # Yes/No/Hybrid
+    'Label': str,           # ATS platform identifier
+    'ATS': str             # Platform name
+}
+```
+
+## Development
 
 ```bash
 cd job_scraper/src
-python3 main_crawler.py              # Run all companies
-python3 main_crawler.py -l 10        # Limit to 10 companies
+
+# Test single company
+python3 main_crawler.py -l 1
+
+# Fast development cycle
+python3 main_crawler.py -l 3 -d 0.1
+
+# Add new scraper
+cp scrapers/template_scraper.py scrapers/undone/new_scraper.py
+# Edit implementation, add to SCRAPER_MAP in main_crawler.py
 ```
-
-Output: `../../data/all_jobs.csv`
-
-## Adding New Scraper
-
-1. Copy `scrapers/template_scraper.py` to `scrapers/undone/`
-2. Implement `scrape_jobs()` method
-3. Test with `-l 1`
-4. Move to `scrapers/done/` when working
-
-## Job Fields
-
-Required fields all scrapers must return:
-- Company Name
-- Job Title
-- Location
-- Job Link
-- Posted Date
-- Remote (Yes/No/Hybrid)
-- Label (ATS platform)
-- ATS (platform name)
-
-Optional: Job Description, Employment Type, Department, Company Description
 
 
 
