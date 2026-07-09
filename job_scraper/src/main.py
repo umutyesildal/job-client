@@ -32,7 +32,11 @@ def main():
     
     parser = argparse.ArgumentParser(description='Job Crawler - Scrape jobs from multiple ATS platforms')
     parser.add_argument('input', nargs='?', default='../../data/job_search.csv',
-                    help='Input CSV file (default: ../../data/job_search.csv)')
+                    help='Input CSV file, Google Sheet URL, or Google spreadsheet ID')
+    parser.add_argument('-t', '--input-type', choices=['csv', 'sheets'], default='csv',
+                    help='Input source type (default: csv)')
+    parser.add_argument('--input-worksheet',
+                    help='Worksheet name to read when using Google Sheets input')
     parser.add_argument('-l', '--limit', type=int, help='Limit number of companies to process')
     parser.add_argument('-d', '--delay', type=float, default=0.2,
                     help='Delay between requests (seconds)')
@@ -40,10 +44,14 @@ def main():
                     help='Output directory for job files')
     parser.add_argument('-w', '--workers', type=int, default=None,
                     help='Number of concurrent scrapers to run (default: auto)')
+    parser.add_argument('--output-sheet',
+                    help='Google Sheet URL or spreadsheet ID to update with all_jobs.csv after scraping')
+    parser.add_argument('--output-worksheet', default='all_jobs',
+                    help='Worksheet name to update when --output-sheet is provided')
     
     args = parser.parse_args()
     
-    CrawlerLogger.info_message("\n🤖 Job Crawler v1.0\n")
+    CrawlerLogger.info_message("\n🤖 Job Crawler v2.0\n")
     
     # Initialize controller
     controller = JobCrawlerController(delay=args.delay, output_dir=args.output_dir, max_workers=args.workers)
@@ -51,7 +59,10 @@ def main():
     # Load data
     try:
         CrawlerLogger.info_message(f"📥 Loading from: {args.input}")
-        df = data_ctrl.load_data_from_csv(args.input)
+        if args.input_type == 'sheets':
+            df = data_ctrl.load_data_from_google_sheet(args.input, args.input_worksheet)
+        else:
+            df = data_ctrl.load_data_from_csv(args.input)
         
         CrawlerLogger.info_message(f"✓ Loaded {len(df)} companies\n")
         
@@ -62,6 +73,10 @@ def main():
     # Process companies
     try:
         controller.process_companies(df, limit=args.limit)
+        if args.output_sheet:
+            output_csv = os.path.join(args.output_dir, 'all_jobs.csv')
+            output_ctrl = DataController(output_csv)
+            output_ctrl.export_jobs_to_google_sheet(args.output_sheet, args.output_worksheet)
             
     except KeyboardInterrupt:
         CrawlerLogger.interrupted_warning()

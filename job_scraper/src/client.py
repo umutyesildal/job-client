@@ -356,6 +356,37 @@ class JobCrawlerController:
         cleaned = url.split('/')[0].strip().lower()
         return cleaned or 'global'
 
+    def _normalize_jobs_dataframe(self, df: pd.DataFrame) -> pd.DataFrame:
+        """Keep legacy Company and scraper Company Name columns in sync."""
+        df = df.copy()
+
+        if 'Company' not in df.columns and 'Company Name' in df.columns:
+            df['Company'] = df['Company Name']
+        elif 'Company Name' not in df.columns and 'Company' in df.columns:
+            df['Company Name'] = df['Company']
+        elif 'Company' in df.columns and 'Company Name' in df.columns:
+            df['Company'] = df['Company'].fillna(df['Company Name'])
+            df['Company Name'] = df['Company Name'].fillna(df['Company'])
+
+        preferred_columns = [
+            'Company',
+            'Company Name',
+            'Job Title',
+            'Location',
+            'Job Link',
+            'Job Description',
+            'Employment Type',
+            'Department',
+            'Posted Date',
+            'Company Description',
+            'Remote',
+            'Label',
+            'ATS'
+        ]
+        ordered_columns = [col for col in preferred_columns if col in df.columns]
+        remaining_columns = [col for col in df.columns if col not in ordered_columns]
+        return df[ordered_columns + remaining_columns]
+
     def _scrape_company_task(self, task: Dict) -> Dict:
         """Worker task for scraping a single company."""
         company_name = task['company_name']
@@ -452,6 +483,7 @@ class JobCrawlerController:
         if os.path.exists(all_jobs_file):
             try:
                 existing_df = pd.read_csv(all_jobs_file, encoding='utf-8', low_memory=False, dtype=str)
+                existing_df = self._normalize_jobs_dataframe(existing_df)
                 if 'Job Link' in existing_df.columns and 'Company' in existing_df.columns:
                     # Group jobs by company
                     for _, row in existing_df.iterrows():
@@ -792,6 +824,7 @@ class JobCrawlerController:
         
         try:
             old_df = pd.read_csv(output_path, encoding='utf-8', low_memory=False, dtype=str)
+            old_df = self._normalize_jobs_dataframe(old_df)
             
             if len(old_df) == 0:
                 CrawlerLogger.empty_previous_file()
@@ -814,6 +847,8 @@ class JobCrawlerController:
         try:
             old_df = pd.read_csv(backup_path, encoding='utf-8', low_memory=False, dtype=str)
             new_df = pd.read_csv(output_path, encoding='utf-8', low_memory=False, dtype=str)
+            old_df = self._normalize_jobs_dataframe(old_df)
+            new_df = self._normalize_jobs_dataframe(new_df)
             
             old_links = set(old_df['Job Link'].tolist())
             new_links = set(new_df['Job Link'].tolist())
@@ -903,14 +938,17 @@ class JobCrawlerController:
         
         output_path = os.path.join(self.output_dir, 'all_jobs.csv')
         new_jobs_df = pd.DataFrame(jobs)
+        new_jobs_df = self._normalize_jobs_dataframe(new_jobs_df)
         
         # Check if file exists AND has content
         if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
             try:
                 existing_df = pd.read_csv(output_path, encoding='utf-8', low_memory=False, dtype=str)
+                existing_df = self._normalize_jobs_dataframe(existing_df)
                 
                 # Combine existing and new jobs
                 combined_df = pd.concat([existing_df, new_jobs_df], ignore_index=True)
+                combined_df = self._normalize_jobs_dataframe(combined_df)
                 
                 # Remove duplicates based on Job Link (keep most recent = last occurrence)
                 combined_df = combined_df.drop_duplicates(subset=['Job Link'], keep='last')

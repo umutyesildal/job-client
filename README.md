@@ -45,14 +45,23 @@ pip install -r requirements.txt
 
 # Run complete pipeline (535 companies)
 cd job_scraper/src
-python3 main_crawler.py
+python3 main.py
 
 # Development mode (fast testing)
-python3 main_crawler.py -l 10 -d 0.1
+python3 main.py -l 10 -d 0.1
 
-# Student pipeline (after main crawler)
-cd ../../student_pipeline  
-python3 run_pipeline.py
+# Use Google Sheets as company input and sync results back to another worksheet
+python3 main.py -t sheets "GOOGLE_SHEET_URL_OR_ID" \
+  --input-worksheet companies \
+  --output-sheet "GOOGLE_SHEET_URL_OR_ID" \
+  --output-worksheet all_jobs
+
+# Current v2 source sheet
+python3 main.py -t sheets "https://docs.google.com/spreadsheets/d/1sYI0IqzXp_W19eAYDCdC46ZjzrWqW5fwHfY0sAzUxKw/edit?gid=2095282077#gid=2095282077" \
+  --input-worksheet OneSingle
+
+# Build Related Jobs and Daily New Jobs outputs
+python3 post_process_jobs.py
 ```
 
 ## 📊 System Status
@@ -83,28 +92,43 @@ python3 run_pipeline.py
 - `data/timing_history.json` - Performance metrics and trends
 - `data/job_changes_YYYY-MM-DD.txt` - Daily comparison reports
 
-### Student Pipeline Outputs
-- `student_pipeline/filtered_student_jobs_final.csv` - Berlin tech jobs
+### Filtered Outputs
+- `data/job_changes_YYYY-MM-DD.txt` - new/removed job reports
 - Google Sheets sync for real-time access
-- CV keyword matching and motivation letters
+- Student-job highlighting in daily reports
 
 ## ⚙️ Configuration Options
 
 ```bash
 # Basic usage
-python3 main_crawler.py                    # All companies, 2s delay
+python3 main.py                            # All companies
 
 # Performance tuning  
-python3 main_crawler.py -d 0.1 -l 5       # Fast testing
-python3 main_crawler.py -d 2.0             # Safe production
+python3 main.py -d 0.1 -l 5                # Fast testing
+python3 main.py -d 2.0                     # Safe production
 
 # Input sources
-python3 main_crawler.py companies.csv      # Custom CSV
-python3 main_crawler.py -t sheets "url"    # Google Sheets
+python3 main.py companies.csv              # Custom CSV
+python3 main.py -t sheets "url_or_id"      # Google Sheets
+python3 main.py -t sheets "url_or_id" --input-worksheet OneSingle
 
 # Custom output
-python3 main_crawler.py -o /custom/path    # Custom directory
+python3 main.py -o /custom/path            # Custom directory
 ```
+
+### Google Sheets Authentication
+
+Google Sheets support uses a service account. Configure one of these before running:
+
+- `GOOGLE_SERVICE_ACCOUNT_JSON` with the full service-account JSON.
+- `GOOGLE_SERVICE_ACCOUNT_FILE` or `GOOGLE_APPLICATION_CREDENTIALS` with a path to the JSON file.
+
+Share the spreadsheet with the service-account email so it can read and update worksheets.
+
+API-key credentials can read public/readable sheets. Updating `Related Jobs` and
+`Daily New Jobs` requires either `GOOGLE_SERVICE_ACCOUNT_JSON`,
+`GOOGLE_SERVICE_ACCOUNT_FILE`, `GOOGLE_APPLICATION_CREDENTIALS`, or local Google
+Application Default Credentials with Sheets write scope.
 
 ## 🔍 Monitoring & Analytics
 
@@ -132,7 +156,3 @@ The system provides comprehensive monitoring:
 ⚡ Microsoft: 284 jobs in 4.2s (67.6 jobs/sec) 
 🔄 Cherry VC: 1,280 jobs in 12.3s (104.1 jobs/sec)
 ```
-
-
-
-
