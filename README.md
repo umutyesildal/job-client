@@ -1,6 +1,6 @@
 # Job Crawler
 
-Intelligent job scraping system that monitors 535+ companies across 23 ATS platforms, with automated filtering and change detection.
+Intelligent job collection system that monitors 535+ companies across 23 ATS platforms, with automated filtering and change detection.
 
 ## 🔄 Pipeline Overview
 
@@ -8,7 +8,7 @@ Intelligent job scraping system that monitors 535+ companies across 23 ATS platf
 📊 Input (535 companies)           🔍 Processing                    📈 Output & Analysis
 ┌─────────────────────┐            ┌──────────────────────┐         ┌─────────────────────┐
 │ job_search.csv      │──────────→ │ Main Crawler Engine  │────────→│ all_jobs.csv        │
-│ - Name, Career Page │            │ - 23 ATS Scrapers    │         │ - 46,000+ jobs      │
+│ - Name, Career Page │            │ - 23 ATS Adapters    │         │ - 46,000+ jobs      │
 │ - Description       │            │ - Rate Limit Detect  │         │                     │
 │ - Label (ATS type)  │            │ - Error Categorize   │         └─────────────────────┘
 │ - Active status     │            │ - Individual Timing  │                     │
@@ -62,6 +62,9 @@ python3 main.py -t sheets "https://docs.google.com/spreadsheets/d/1sYI0IqzXp_W19
 
 # Build Related Jobs and Daily New Jobs outputs
 python3 post_process_jobs.py
+
+# Open the local Daily Berlin Software Jobs app
+python3 daily_berlin_jobs/server.py
 ```
 
 ## 📊 System Status
@@ -96,6 +99,22 @@ python3 post_process_jobs.py
 - `data/job_changes_YYYY-MM-DD.txt` - new/removed job reports
 - Google Sheets sync for real-time access
 - Student-job highlighting in daily reports
+
+## Daily Berlin Software Jobs UI
+
+Run the local dashboard from the repository root:
+
+```bash
+python3 daily_berlin_jobs/server.py
+```
+
+Then open `http://127.0.0.1:8765`.
+
+The UI reads `data/related_jobs.csv` and `data/daily_new_jobs.csv` for the main
+job views. LinkedIn daily collection stays included in the daily pipeline, while
+the homepage keeps only lightweight filters and a small settings panel for update
+controls. By default it runs in local preview mode, so it does not push to Google
+Sheets unless you turn that off in settings.
 
 ## ⚙️ Configuration Options
 

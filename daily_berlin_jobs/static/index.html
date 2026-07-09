@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Daily Berlin Software Jobs</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <main class="page">
+      <header class="topbar">
+        <div>
+          <h1>Daily Berlin Software Jobs</h1>
+          <p id="updatedText">Loading jobs</p>
+        </div>
+        <button id="settingsToggle" class="settings-toggle" title="Settings" aria-label="Settings">⚙</button>
+      </header>
+
+      <section class="filters" aria-label="Job filters">
+        <nav class="source-tabs" aria-label="Job source">
+          <button class="source-tab active" data-source="related">Best Fit <span id="relatedCount">0</span></button>
+          <button class="source-tab" data-source="daily">New Today <span id="dailyCount">0</span></button>
+        </nav>
+
+        <label class="search-field">
+          <span>Search</span>
+          <input id="searchInput" type="search" placeholder="Company, title, stack">
+        </label>
+
+        <label>
+          <span>Role</span>
+          <select id="roleSelect">
+            <option value="all">All</option>
+            <option value="backend">Backend</option>
+            <option value="frontend">Frontend</option>
+            <option value="fullstack">Fullstack</option>
+            <option value="data">AI/Data</option>
+            <option value="junior">Junior</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Mode</span>
+          <select id="remoteSelect">
+            <option value="all">Any</option>
+            <option value="No">On-site</option>
+            <option value="Hybrid">Hybrid</option>
+            <option value="Yes">Remote</option>
+          </select>
+        </label>
+      </section>
+
+      <section id="jobsList" class="jobs-grid" aria-live="polite"></section>
+    </main>
+
+    <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
+    <aside id="settingsPanel" class="settings-panel" aria-label="Settings" hidden>
+      <div class="panel-heading">
+        <h2>Settings</h2>
+        <button id="settingsClose" class="icon-button" title="Close" aria-label="Close">×</button>
+      </div>
+
+      <div class="field-grid">
+        <label class="field">
+          <span>Per Query</span>
+          <input id="limitInput" type="number" min="1" max="200">
+        </label>
+        <label class="field">
+          <span>Hours</span>
+          <input id="hoursInput" type="number" min="0" max="168">
+        </label>
+      </div>
+
+      <label class="toggle">
+        <input id="includeLinkedInInput" type="checkbox">
+        <span>Include LinkedIn daily</span>
+      </label>
+      <label class="toggle">
+        <input id="profileFitOnlyInput" type="checkbox">
+        <span>Profile-fit only</span>
+      </label>
+      <label class="toggle">
+        <input id="skipUploadInput" type="checkbox">
+        <span>Local preview only</span>
+      </label>
+
+      <div class="settings-actions">
+        <button id="saveSettingsBtn" class="secondary-action">Save</button>
+        <button id="runBtn" class="primary-action">Run Daily Update</button>
+      </div>
+
+      <pre id="runLog" class="run-log" aria-live="polite"></pre>
+    </aside>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
