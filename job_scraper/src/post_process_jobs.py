@@ -326,6 +326,8 @@ def main() -> int:
                         help="LinkedIn posted-time filter in seconds; 86400 means last 24 hours")
     parser.add_argument("--linkedin-raw-daily", action="store_true",
                         help="Append raw LinkedIn daily results instead of profile-fit rows only")
+    parser.add_argument("--linkedin-pre-scraped", default="",
+                        help="Path to pre-scraped LinkedIn daily jobs CSV file to append instead of scraping live")
 
     args = parser.parse_args()
 
@@ -340,16 +342,27 @@ def main() -> int:
 
     current_df = load_jobs(current_path)
     if args.include_linkedin_daily:
-        current_df = append_linkedin_daily_jobs(
-            current_df=current_df,
-            output_path=Path(args.linkedin_output),
-            keywords=args.linkedin_keywords,
-            location=args.linkedin_location,
-            limit_per_query=args.linkedin_limit_per_query,
-            delay=args.linkedin_delay,
-            posted_within_seconds=args.linkedin_posted_within_seconds,
-            related_only=not args.linkedin_raw_daily,
-        )
+        pre_scraped_path = Path(args.linkedin_pre_scraped) if args.linkedin_pre_scraped else None
+        if pre_scraped_path and pre_scraped_path.exists():
+            print(f"Loading pre-scraped LinkedIn daily jobs: {pre_scraped_path}")
+            linkedin_df = load_jobs(pre_scraped_path)
+            if not linkedin_df.empty:
+                # Filter for profile fit if not raw
+                if not args.linkedin_raw_daily:
+                    linkedin_df = filter_related_jobs(linkedin_df)
+                combined_df = pd.concat([current_df, linkedin_df], ignore_index=True, sort=False).fillna("")
+                current_df = DataController().normalize_jobs_dataframe(combined_df)
+        else:
+            current_df = append_linkedin_daily_jobs(
+                current_df=current_df,
+                output_path=Path(args.linkedin_output),
+                keywords=args.linkedin_keywords,
+                location=args.linkedin_location,
+                limit_per_query=args.linkedin_limit_per_query,
+                delay=args.linkedin_delay,
+                posted_within_seconds=args.linkedin_posted_within_seconds,
+                related_only=not args.linkedin_raw_daily,
+            )
 
     related_df = filter_related_jobs(current_df)
     daily_new_df = find_daily_new_jobs(current_df, previous_path)

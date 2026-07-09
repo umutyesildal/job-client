@@ -6,11 +6,15 @@ import csv
 import json
 import subprocess
 import sys
+import threading
 from datetime import datetime
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+# Increase CSV field size limit to support long job descriptions
+csv.field_size_limit(min(2**31 - 1, sys.maxsize))
 
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -244,9 +248,187 @@ def build_update_command(settings: dict) -> list[str]:
     return command
 
 
-def run_update() -> dict:
+class RunState:
+    def __init__(self):
+        self.running = False
+        self.process_main = None
+        self.process_linkedin = None
+        self.process_post = None
+        self.stdout_log = []
+        self.return_code = None
+        self.lock = threading.Lock()
+
+RUN_STATE = RunState()
+
+def async_run_update():
+    started_at = datetime.now().isoformat(timespec="seconds")
+    with RUN_STATE.lock:
+        RUN_STATE.running = True
+        RUN_STATE.stdout_log = ["Starting daily update..."]
+        RUN_STATE.return_code = None
+        RUN_STATE.process_main = None
+        RUN_STATE.process_linkedin = None
+        RUN_STATE.process_post = None
+
     settings = load_settings()
-    command = build_update_command(settings)
+    python = str(REPO_ROOT / ".venv" / "bin" / "python")
+    if not Path(python).exists():
+        python = sys.executable
+
+    # Step 1: Prepare command for main.py crawler (crawls ATS platforms from OneSingle sheet)
+    main_cmd = [
+        python,
+        str(SRC_DIR / "main.py"),
+        "https://docs.google.com/spreadsheets/d/1sYI0IqzXp_W19eAYDCdC46ZjzrWqW5fwHfY0sAzUxKw/",
+        "-t", "sheets",
+        "--input-worksheet", "OneSingle"
+    ]
+
+    # Step 2: Prepare command for linkedin_daily.py (scrapes recent LinkedIn queries)
+    linkedin_cmd = [
+        python,
+        str(SRC_DIR / "linkedin_daily.py"),
+        "--location", str(settings.get("location") or "Berlin, Germany"),
+        "--limit-per-query", str(settings.get("limitPerQuery") or 25),
+        "--delay", str(settings.get("delay") or 1.0),
+        "--posted-within-seconds", str(settings.get("postedWithinSeconds") or 86400),
+        "--output", str(DATA_DIR / "linkedin_daily_jobs.csv"),
+    ]
+    if settings.get("keywords"):
+        linkedin_cmd.append("--keywords")
+        linkedin_cmd.extend(settings["keywords"])
+
+    with RUN_STATE.lock:
+        RUN_STATE.stdout_log.append("Starting ATS Crawler and LinkedIn Scraper concurrently...")
+
+    try:
+        # Start both processes concurrently (in parallel!)
+        p_main = subprocess.Popen(
+            main_cmd,
+            cwd=str(REPO_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,  # Redirect stderr to stdout so we capture it in one stream
+            text=True,
+            bufsize=1
+        )
+        p_linkedin = subprocess.Popen(
+            linkedin_cmd,
+            cwd=str(REPO_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+
+        with RUN_STATE.lock:
+            RUN_STATE.process_main = p_main
+            RUN_STATE.process_linkedin = p_linkedin
+
+        # Threads to capture streams in real-time
+        def log_reader(stream, prefix):
+            for line in iter(stream.readline, ""):
+                if not line:
+                    break
+                line_str = line.strip()
+                if line_str:
+                    with RUN_STATE.lock:
+                        RUN_STATE.stdout_log.append(f"{prefix} {line_str}")
+            stream.close()
+
+        t_main = threading.Thread(target=log_reader, args=(p_main.stdout, "[ATS]"))
+        t_linkedin = threading.Thread(target=log_reader, args=(p_linkedin.stdout, "[LinkedIn]"))
+
+        t_main.daemon = True
+        t_linkedin.daemon = True
+        t_main.start()
+        t_linkedin.start()
+
+        # Wait for both processes to complete concurrently
+        p_main.wait()
+        p_linkedin.wait()
+
+        # Join the reader threads
+        t_main.join(timeout=2.0)
+        t_linkedin.join(timeout=2.0)
+
+        # Check return codes
+        if p_main.returncode != 0 and p_main.returncode != -9:  # -9 is manual kill
+            with RUN_STATE.lock:
+                RUN_STATE.stdout_log.append(f"ATS Crawler failed with exit code {p_main.returncode}")
+                RUN_STATE.running = False
+                RUN_STATE.return_code = p_main.returncode
+            return
+
+        if p_linkedin.returncode != 0 and p_linkedin.returncode != -9:
+            with RUN_STATE.lock:
+                RUN_STATE.stdout_log.append(f"LinkedIn Scraper failed with exit code {p_linkedin.returncode}")
+                RUN_STATE.running = False
+                RUN_STATE.return_code = p_linkedin.returncode
+            return
+
+        # If it was manual kill, abort post processing
+        if p_main.returncode == -9 or p_linkedin.returncode == -9:
+            with RUN_STATE.lock:
+                RUN_STATE.running = False
+                RUN_STATE.return_code = -9
+                RUN_STATE.stdout_log.append("Execution cancelled by user.")
+            return
+
+        # Step 3: Run post_process_jobs.py to merge all_jobs.csv and the pre-scraped linkedin file
+        post_cmd = build_update_command(settings)
+        post_cmd.extend(["--linkedin-pre-scraped", str(DATA_DIR / "linkedin_daily_jobs.csv")])
+        
+        with RUN_STATE.lock:
+            RUN_STATE.stdout_log.append("Starting Post Processing and Sheets Upload...")
+
+        p_post = subprocess.Popen(
+            post_cmd,
+            cwd=str(REPO_ROOT),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1
+        )
+
+        with RUN_STATE.lock:
+            RUN_STATE.process_post = p_post
+
+        t_post = threading.Thread(target=log_reader, args=(p_post.stdout, "[Post]"))
+        t_post.daemon = True
+        t_post.start()
+
+        p_post.wait()
+        t_post.join(timeout=2.0)
+
+        # Save run log JSON
+        result = {
+            "startedAt": started_at,
+            "finishedAt": datetime.now().isoformat(timespec="seconds"),
+            "returnCode": p_post.returncode,
+            "command": post_cmd,
+            "stdout": "\n".join(RUN_STATE.stdout_log)[-12000:],
+            "stderr": "",
+        }
+        write_json(RUN_LOG_PATH, result)
+
+        with RUN_STATE.lock:
+            RUN_STATE.running = False
+            RUN_STATE.return_code = p_post.returncode
+            RUN_STATE.stdout_log.append(f"Update finished with code {p_post.returncode}")
+
+    except Exception as e:
+        with RUN_STATE.lock:
+            RUN_STATE.stdout_log.append(f"System Error during update: {e}")
+            RUN_STATE.running = False
+            RUN_STATE.return_code = 1
+
+
+def run_sync_sheets() -> dict:
+    python = str(REPO_ROOT / ".venv" / "bin" / "python")
+    if not Path(python).exists():
+        python = sys.executable
+
+    command = [python, str(SRC_DIR / "pull_from_sheets.py")]
     started_at = datetime.now().isoformat(timespec="seconds")
 
     try:
@@ -255,7 +437,7 @@ def run_update() -> dict:
             cwd=str(REPO_ROOT),
             text=True,
             capture_output=True,
-            timeout=600,
+            timeout=120,
             check=False,
         )
         result = {
@@ -263,8 +445,8 @@ def run_update() -> dict:
             "finishedAt": datetime.now().isoformat(timespec="seconds"),
             "returnCode": completed.returncode,
             "command": command,
-            "stdout": completed.stdout[-12000:],
-            "stderr": completed.stderr[-12000:],
+            "stdout": completed.stdout,
+            "stderr": completed.stderr,
         }
     except subprocess.TimeoutExpired as exc:
         result = {
@@ -272,11 +454,18 @@ def run_update() -> dict:
             "finishedAt": datetime.now().isoformat(timespec="seconds"),
             "returnCode": 124,
             "command": command,
-            "stdout": (exc.stdout or "")[-12000:] if isinstance(exc.stdout, str) else "",
-            "stderr": "Daily update timed out after 600 seconds.",
+            "stdout": (exc.stdout or ""),
+            "stderr": "Google Sheets sync timed out.",
         }
-
-    write_json(RUN_LOG_PATH, result)
+    except Exception as e:
+        result = {
+            "startedAt": started_at,
+            "finishedAt": datetime.now().isoformat(timespec="seconds"),
+            "returnCode": 1,
+            "command": command,
+            "stdout": "",
+            "stderr": str(e),
+        }
     return result
 
 
@@ -304,6 +493,14 @@ class DailyBerlinJobsHandler(SimpleHTTPRequestHandler):
             return
         if parsed.path == "/api/run/latest":
             self.send_json(read_json(RUN_LOG_PATH, None) or {})
+            return
+        if parsed.path == "/api/run/status":
+            with RUN_STATE.lock:
+                self.send_json({
+                    "running": RUN_STATE.running,
+                    "returnCode": RUN_STATE.return_code,
+                    "logs": "\n".join(RUN_STATE.stdout_log)
+                })
             return
         if parsed.path == "/":
             self.path = "/index.html"
@@ -333,7 +530,36 @@ class DailyBerlinJobsHandler(SimpleHTTPRequestHandler):
             self.send_json(settings)
             return
         if parsed.path == "/api/run":
-            self.send_json(run_update())
+            with RUN_STATE.lock:
+                if RUN_STATE.running:
+                    self.send_json({"status": "already_running"})
+                    return
+            thread = threading.Thread(target=async_run_update)
+            thread.daemon = True
+            thread.start()
+            self.send_json({"status": "started"})
+            return
+        if parsed.path == "/api/run/stop":
+            with RUN_STATE.lock:
+                if RUN_STATE.running:
+                    killed = False
+                    for proc in (RUN_STATE.process_main, RUN_STATE.process_linkedin, RUN_STATE.process_post):
+                        if proc and proc.poll() is None:
+                            try:
+                                proc.kill()
+                                killed = True
+                            except Exception:
+                                pass
+                    if killed:
+                        RUN_STATE.stdout_log.append("Update manual cancellation requested by user. Killing subprocesses...")
+                    RUN_STATE.running = False
+                    RUN_STATE.return_code = -9
+                    self.send_json({"status": "stopped"})
+                    return
+                self.send_json({"status": "not_running"})
+                return
+        if parsed.path == "/api/sync-sheets":
+            self.send_json(run_sync_sheets())
             return
 
         self.send_error(HTTPStatus.NOT_FOUND, "Not found")

@@ -126,3 +126,30 @@ def collect_daily_linkedin_jobs(
 def save_linkedin_daily_jobs(df: pd.DataFrame, output_path: Path) -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     df.to_csv(output_path, index=False, encoding="utf-8")
+
+
+if __name__ == "__main__":
+    import argparse
+    
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+    
+    parser = argparse.ArgumentParser(description="LinkedIn daily query scraper")
+    parser.add_argument("--location", default="Berlin, Germany", help="LinkedIn query location")
+    parser.add_argument("--limit-per-query", type=int, default=25, help="Max LinkedIn jobs to fetch per keyword")
+    parser.add_argument("--delay", type=float, default=1.0, help="Delay between LinkedIn guest requests")
+    parser.add_argument("--posted-within-seconds", type=int, default=86400, help="Posted-time filter in seconds")
+    parser.add_argument("--output", default="data/linkedin_daily_jobs.csv", help="Output CSV path")
+    parser.add_argument("--keywords", nargs="*", help="LinkedIn query keywords")
+    args = parser.parse_args()
+    
+    output_path = Path(args.output)
+    df = collect_daily_linkedin_jobs(
+        keywords=args.keywords,
+        location=args.location,
+        limit_per_query=args.limit_per_query,
+        delay=args.delay,
+        posted_within_seconds=args.posted_within_seconds,
+    )
+    
+    save_linkedin_daily_jobs(df, output_path)
+    print(f"LinkedIn daily scraping complete. Saved {len(df)} jobs to {args.output}")

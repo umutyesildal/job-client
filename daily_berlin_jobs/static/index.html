@@ -4,23 +4,31 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Daily Berlin Software Jobs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <main class="page">
-      <header class="topbar">
-        <div>
-          <h1>Daily Berlin Software Jobs</h1>
-          <p id="updatedText">Loading jobs</p>
-        </div>
+      <nav class="navbar">
+        <div class="logo">Daily Berlin Jobs</div>
         <button id="settingsToggle" class="settings-toggle" title="Settings" aria-label="Settings">⚙</button>
+      </nav>
+
+      <header class="hero">
+        <h1>Discover Daily Berlin Jobs</h1>
+        <p id="updatedText">Loading jobs...</p>
       </header>
 
       <section class="filters" aria-label="Job filters">
-        <nav class="source-tabs" aria-label="Job source">
-          <button class="source-tab active" data-source="related">Best Fit <span id="relatedCount">0</span></button>
-          <button class="source-tab" data-source="daily">New Today <span id="dailyCount">0</span></button>
-        </nav>
+        <div class="field">
+          <span>View</span>
+          <nav class="source-tabs" aria-label="Job source">
+            <button class="source-tab" data-source="related">Best Fit <span id="relatedCount">0</span></button>
+            <button class="source-tab active" data-source="daily">New Today <span id="dailyCount">0</span></button>
+          </nav>
+        </div>
 
         <label class="search-field">
           <span>Search</span>
@@ -50,7 +58,17 @@
         </label>
       </section>
 
-      <section id="jobsList" class="jobs-grid" aria-live="polite"></section>
+      <section class="jobs-list-container">
+        <div class="table-header">
+          <span class="col-rank">#</span>
+          <span class="col-title">Role</span>
+          <span class="col-company">Company</span>
+          <span class="col-mode">Mode</span>
+          <span class="col-date">Date</span>
+          <span class="col-action"></span>
+        </div>
+        <div id="jobsList" aria-live="polite"></div>
+      </section>
     </main>
 
     <div id="settingsBackdrop" class="settings-backdrop" hidden></div>
@@ -63,20 +81,20 @@
       <div class="field-grid">
         <label class="field">
           <span>Per Query</span>
-          <input id="limitInput" type="number" min="1" max="200">
+          <input id="limitInput" type="number" min="1" max="200" disabled value="25">
         </label>
         <label class="field">
           <span>Hours</span>
-          <input id="hoursInput" type="number" min="0" max="168">
+          <input id="hoursInput" type="number" min="0" max="168" disabled value="24">
         </label>
       </div>
 
       <label class="toggle">
-        <input id="includeLinkedInInput" type="checkbox">
+        <input id="includeLinkedInInput" type="checkbox" disabled checked>
         <span>Include LinkedIn daily</span>
       </label>
       <label class="toggle">
-        <input id="profileFitOnlyInput" type="checkbox">
+        <input id="profileFitOnlyInput" type="checkbox" disabled checked>
         <span>Profile-fit only</span>
       </label>
       <label class="toggle">
@@ -86,6 +104,7 @@
 
       <div class="settings-actions">
         <button id="saveSettingsBtn" class="secondary-action">Save</button>
+        <button id="syncBtn" class="secondary-action">Sync Sheets</button>
         <button id="runBtn" class="primary-action">Run Daily Update</button>
       </div>
 
