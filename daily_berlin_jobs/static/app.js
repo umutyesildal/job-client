@@ -1,13 +1,15 @@
 const state = {
-  source: "daily",
+  source: "all",
   settings: null,
+  summary: null,
   jobs: [],
-  sortBy: "rank",
+  sortBy: "date",
   sortAsc: false,
+  running: false,
 };
 
 const sourceLabels = {
-  related: "Best Fit",
+  all: "All Jobs",
   daily: "New Today",
 };
 
@@ -33,6 +35,15 @@ async function api(path, options = {}) {
   return response.json();
 }
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
 function formatDate(value) {
   if (!value) return "No local data yet";
   const date = new Date(value);
@@ -46,60 +57,61 @@ function formatDate(value) {
 }
 
 function formatJobDate(value) {
-  if (!value) return "";
-  const valStr = String(value).trim();
-  if (valStr.includes("ago") || valStr.includes("hour") || valStr.includes("day") || valStr.includes("week")) {
-    return valStr;
+  if (!value) return "Unknown";
+  const raw = String(value).trim();
+  if (raw.includes("ago") || raw.includes("hour") || raw.includes("day") || raw.includes("week")) {
+    return raw;
   }
-  const date = new Date(valStr);
-  if (Number.isNaN(date.getTime())) return valStr;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return raw;
   return date.toLocaleDateString("en-US", {
-    month: "long",
+    month: "short",
     day: "numeric",
     year: "numeric",
   });
 }
 
-function escapeHtml(value) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
-function compactText(value, maxLength = 150) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (text.length <= maxLength) return text;
-  return `${text.slice(0, maxLength - 1)}…`;
-}
-
-function renderSummary(summary) {
-  const sources = summary.sources || {};
-  $("#relatedCount").textContent = sources.related?.count ?? 0;
-  $("#dailyCount").textContent = sources.daily?.count ?? 0;
-
-  const activeSource = sources[state.source];
-  $("#updatedText").textContent = `${sourceLabels[state.source]} · ${activeSource?.count ?? 0} roles · ${formatDate(activeSource?.updatedAt)}`;
-
-  fillSettings(summary.settings);
+function parseSortableDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) return 0;
+  return date.getTime();
 }
 
 function fillSettings(settings) {
-  if (!settings || state.settings) return;
+  if (!settings) return;
   state.settings = settings;
   $("#includeLinkedInInput").checked = true;
-  $("#profileFitOnlyInput").checked = true;
   $("#skipUploadInput").checked = Boolean(settings.skipUpload);
   $("#limitInput").value = 25;
   $("#hoursInput").value = 24;
+}
+
+function preferredSortForSource(source) {
+  return { sortBy: "date", sortAsc: false };
+}
+
+function renderSummary(summary) {
+  state.summary = summary;
+  const sources = summary.sources || {};
+
+  $("#allTabCount").textContent = sources.all?.count ?? 0;
+  $("#dailyTabCount").textContent = sources.daily?.count ?? 0;
+
+  const activeSource = sources[state.source] || {};
+  const updatedAt = activeSource.updatedAt || summary.lastRun?.finishedAt;
+  $("#updatedText").textContent =
+    `${sourceLabels[state.source]} \u00b7 ${activeSource.count ?? 0} roles \u00b7 Updated ${formatDate(updatedAt)}`;
+
+  fillSettings(summary.settings);
 }
 
 function queryParams() {
   const params = new URLSearchParams();
   params.set("source", state.source);
   params.set("q", $("#searchInput").value.trim());
+  params.set("level", $("#levelSelect").value);
   params.set("role", $("#roleSelect").value);
   params.set("remote", $("#remoteSelect").value);
   return params;
@@ -107,106 +119,109 @@ function queryParams() {
 
 async function loadJobs() {
   const payload = await api(`/api/jobs?${queryParams().toString()}`);
-  state.jobs = (payload.jobs || []).map((job, idx) => ({
-    ...job,
-    originalRank: idx + 1
-  }));
+  state.jobs = payload.jobs || [];
   renderJobs(state.jobs);
 }
 
 function updateHeaderSortIndicators() {
   const headers = {
-    rank: ".col-rank",
     title: ".col-title",
     company: ".col-company",
-    mode: ".col-mode",
-    date: ".col-date"
+    date: ".col-date",
   };
-  
+
   Object.entries(headers).forEach(([key, selector]) => {
     const el = $(selector);
     if (!el) return;
-    let text = el.textContent.replace(/ [↑↓]$/, "");
+    el.dataset.label = el.dataset.label || el.textContent.replace(/ [↑↓]$/, "");
+    const base = el.dataset.label;
     if (state.sortBy === key) {
-      text += state.sortAsc ? " ↑" : " ↓";
+      el.textContent = `${base} ${state.sortAsc ? "↑" : "↓"}`;
       el.classList.add("active-sort");
     } else {
+      el.textContent = base;
       el.classList.remove("active-sort");
     }
-    el.textContent = text;
   });
+}
+
+function buildMetaPills(job) {
+  const pills = [];
+  const remoteText = String(job.remote || "").trim();
+  if (remoteText && remoteText.toLowerCase() !== "no" && remoteText.toLowerCase() !== "on-site") {
+    pills.push(remoteText);
+  }
+
+  return pills
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((pill) => `<span class="meta-pill">${escapeHtml(pill)}</span>`)
+    .join("");
+}
+
+function sortJobs(jobs) {
+  const sortedJobs = [...jobs];
+  sortedJobs.sort((a, b) => {
+    if (state.sortBy === "title") {
+      const valA = (a.title || "").toLowerCase();
+      const valB = (b.title || "").toLowerCase();
+      if (valA < valB) return state.sortAsc ? -1 : 1;
+      if (valA > valB) return state.sortAsc ? 1 : -1;
+      return 0;
+    }
+
+    if (state.sortBy === "company") {
+      const valA = (a.company || "").toLowerCase();
+      const valB = (b.company || "").toLowerCase();
+      if (valA < valB) return state.sortAsc ? -1 : 1;
+      if (valA > valB) return state.sortAsc ? 1 : -1;
+      return 0;
+    }
+
+    const dateA = parseSortableDate(a.postedDate);
+    const dateB = parseSortableDate(b.postedDate);
+    return state.sortAsc ? dateA - dateB : dateB - dateA;
+  });
+  return sortedJobs;
 }
 
 function renderJobs(jobs) {
   const list = $("#jobsList");
-  if (!jobs || !jobs.length) {
-    list.innerHTML = `<div class="empty-state">No roles match these filters yet.</div>`;
+  if (!jobs.length) {
+    list.innerHTML = `<div class="empty-state">No Berlin roles match this search right now.</div>`;
     return;
   }
 
   updateHeaderSortIndicators();
 
-  // Create a copy to avoid mutating the original fetched array
-  const sortedJobs = [...jobs];
-  console.log("Sorting jobs. Count:", sortedJobs.length, "SortBy:", state.sortBy, "Asc:", state.sortAsc);
-  sortedJobs.sort((a, b) => {
-    let valA, valB;
-    if (state.sortBy === "rank") {
-      valA = a.fitScore ?? 0;
-      valB = b.fitScore ?? 0;
-      return state.sortAsc ? valA - valB : valB - valA;
-    } else if (state.sortBy === "title") {
-      valA = (a.title || "").toLowerCase();
-      valB = (b.title || "").toLowerCase();
-    } else if (state.sortBy === "company") {
-      valA = (a.company || "").toLowerCase();
-      valB = (b.company || "").toLowerCase();
-    } else if (state.sortBy === "mode") {
-      valA = (a.remote || "").toLowerCase();
-      valB = (b.remote || "").toLowerCase();
-    } else if (state.sortBy === "date") {
-      valA = a.postedDate ? new Date(a.postedDate) : new Date(0);
-      valB = b.postedDate ? new Date(b.postedDate) : new Date(0);
-    }
-    
-    if (valA < valB) return state.sortAsc ? -1 : 1;
-    if (valA > valB) return state.sortAsc ? 1 : -1;
-    return 0;
-  });
+  list.innerHTML = sortJobs(jobs).map((job) => {
+    const locationText = job.location || "Berlin";
+    const metaPills = buildMetaPills(job);
+    const rowTag = job.link ? "a" : "article";
+    const rowAttrs = job.link
+      ? `class="job-row job-row-link" href="${escapeHtml(job.link)}" target="_blank" rel="noreferrer"`
+      : `class="job-row"`;
 
-  list.innerHTML = sortedJobs
-    .map((job) => {
-      const cleanLocation = job.location && !job.location.toLowerCase().includes("berlin") ? job.location : "";
-      const metaParts = [];
-      if (cleanLocation) {
-        metaParts.push(cleanLocation);
-      }
-      const dateText = job.postedDate ? formatJobDate(job.postedDate) : "-";
-      const remoteText = job.remote && job.remote !== "No" ? job.remote : "On-site";
-      const metaLocationText = metaParts.length ? `${remoteText} (${metaParts.join(", ")})` : remoteText;
-
-      return `
-        <div class="job-row">
-          <span class="job-rank">#${job.originalRank}</span>
-          <h3 class="job-title" title="${escapeHtml(job.title || '')}">${escapeHtml(job.title || "Untitled role")}</h3>
-          <span class="job-company" title="${escapeHtml(job.company || '')}">${escapeHtml(job.company || "Unknown company")}</span>
-          <span class="job-meta-inline">${escapeHtml(metaLocationText)}</span>
-          <span class="job-meta-inline">${escapeHtml(dateText)}</span>
-          <div class="job-row-right">
-            ${job.link ? `
-              <a class="job-external-link" href="${escapeHtml(job.link)}" target="_blank" rel="noreferrer" title="Open job details">
-                <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-                  <polyline points="15 3 21 3 21 9"></polyline>
-                  <line x1="10" y1="14" x2="21" y2="3"></line>
-                </svg>
-              </a>
-            ` : ""}
+    return `
+      <${rowTag} ${rowAttrs}>
+        <div class="job-cell job-main">
+          <h3 class="job-title" title="${escapeHtml(job.title || "")}">${escapeHtml(job.title || "Untitled role")}</h3>
+        </div>
+        <div class="job-cell job-company-cell">
+          <span class="job-company" title="${escapeHtml(job.company || "")}">${escapeHtml(job.company || "Unknown company")}</span>
+          <span class="job-location">${escapeHtml(locationText)}</span>
+        </div>
+        <div class="job-cell job-meta-cell">
+          <div class="job-signals">
+            ${metaPills || `<span class="job-meta-empty">-</span>`}
           </div>
         </div>
-      `;
-    })
-    .join("");
+        <div class="job-cell job-date-cell">
+          <span class="job-date">${escapeHtml(formatJobDate(job.postedDate))}</span>
+        </div>
+      </${rowTag}>
+    `;
+  }).join("");
 }
 
 function collectSettings() {
@@ -252,7 +267,7 @@ function startPollingStatus() {
       const status = await api("/api/run/status");
       const logArea = $("#runLog");
       logArea.textContent = status.logs || "";
-      logArea.scrollTop = logArea.scrollHeight; // Auto-scroll to bottom
+      logArea.scrollTop = logArea.scrollHeight;
 
       if (!status.running) {
         clearInterval(statusInterval);
@@ -263,8 +278,8 @@ function startPollingStatus() {
         await refreshSummary();
         await loadJobs();
       }
-    } catch (e) {
-      console.error("Error polling status", e);
+    } catch (error) {
+      console.error("Error polling status", error);
     }
   }, 1200);
 }
@@ -273,23 +288,22 @@ async function runDailyUpdate() {
   const button = $("#runBtn");
   if (state.running) {
     button.disabled = true;
-    button.textContent = "Stopping…";
+    button.textContent = "Stopping...";
     try {
       await api("/api/run/stop", { method: "POST" });
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       resetRunButton();
     }
     return;
   }
 
-  // Start the background process
   button.textContent = "Stop Update";
   button.classList.add("secondary-action");
   button.classList.remove("primary-action");
   state.running = true;
 
-  $("#runLog").textContent = "Starting daily update…\n";
+  $("#runLog").textContent = "Starting daily update...\n";
   try {
     await saveSettings();
     await api("/api/run", { method: "POST", body: "{}" });
@@ -303,7 +317,7 @@ async function runDailyUpdate() {
 async function runSyncSheets() {
   const button = $("#syncBtn");
   button.disabled = true;
-  $("#runLog").textContent = "Syncing Google Sheets…";
+  $("#runLog").textContent = "Syncing Google Sheets...";
   try {
     const result = await api("/api/sync-sheets", { method: "POST", body: "{}" });
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
@@ -334,16 +348,21 @@ function closeSettings() {
 
 function bindEvents() {
   const debouncedLoad = debounce(loadJobs);
-  ["#searchInput", "#roleSelect", "#remoteSelect"].forEach((selector) => {
-    $(selector).addEventListener("input", debouncedLoad);
+
+  $("#searchInput").addEventListener("input", debouncedLoad);
+  $("#searchInput").addEventListener("change", loadJobs);
+  ["#levelSelect", "#roleSelect", "#remoteSelect"].forEach((selector) => {
     $(selector).addEventListener("change", loadJobs);
   });
 
   $$(".source-tab").forEach((button) => {
     button.addEventListener("click", async () => {
       state.source = button.dataset.source;
+      Object.assign(state, preferredSortForSource(state.source));
       $$(".source-tab").forEach((item) => item.classList.toggle("active", item === button));
-      await refreshSummary();
+      if (state.summary) {
+        renderSummary(state.summary);
+      }
       await loadJobs();
     });
   });
@@ -355,28 +374,27 @@ function bindEvents() {
   $("#syncBtn").addEventListener("click", runSyncSheets);
   $("#runBtn").addEventListener("click", runDailyUpdate);
 
-  // Bind sorting clicks to table headers
   const sortHeaders = {
-    ".col-rank": "rank",
     ".col-title": "title",
     ".col-company": "company",
-    ".col-mode": "mode",
-    ".col-date": "date"
+    ".col-date": "date",
   };
+
   Object.entries(sortHeaders).forEach(([selector, field]) => {
     const el = $(selector);
-    if (el) {
-      el.addEventListener("click", () => {
-        console.log("Header clicked! Field:", field, "Current state:", state.sortBy, state.sortAsc);
-        if (state.sortBy === field) {
-          state.sortAsc = !state.sortAsc;
-        } else {
-          state.sortBy = field;
-          state.sortAsc = (field !== "rank" && field !== "date");
+    if (!el) return;
+    el.addEventListener("click", () => {
+      if (state.sortBy === field) {
+        state.sortAsc = !state.sortAsc;
+      } else {
+        state.sortBy = field;
+        state.sortAsc = field === "title" || field === "company";
+        if (field === "date") {
+          state.sortAsc = false;
         }
-        renderJobs(state.jobs);
-      });
-    }
+      }
+      renderJobs(state.jobs);
+    });
   });
 }
 
@@ -384,8 +402,7 @@ async function init() {
   bindEvents();
   await refreshSummary();
   await loadJobs();
-  
-  // Check if update is currently running in background
+
   try {
     const status = await api("/api/run/status");
     if (status.running) {
@@ -396,11 +413,12 @@ async function init() {
       button.classList.remove("primary-action");
       startPollingStatus();
     }
-  } catch (e) {
-    console.error("Error fetching initial run status", e);
+  } catch (error) {
+    console.error("Error fetching initial run status", error);
   }
 }
 
 init().catch((error) => {
-  $("#jobsList").innerHTML = `<div class="empty-state">Could not load app data: ${escapeHtml(error.message)}</div>`;
+  $("#jobsList").innerHTML =
+    `<div class="empty-state">Could not load app data: ${escapeHtml(error.message)}</div>`;
 });

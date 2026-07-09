@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import csv
 import json
+import re
 import subprocess
 import sys
 import threading
+import unicodedata
 from datetime import datetime
 from http import HTTPStatus
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -49,18 +51,31 @@ DEFAULT_SETTINGS = {
 }
 
 SOURCES = {
-    "related": DATA_DIR / "related_jobs.csv",
+    "all": DATA_DIR / "all_jobs.csv",
     "daily": DATA_DIR / "daily_new_jobs.csv",
     "linkedin": DATA_DIR / "linkedin_daily_jobs.csv",
 }
 
-ROLE_KEYWORDS = {
-    "backend": ("backend", "back-end", "api", "python", "django", "fastapi", "node"),
-    "frontend": ("frontend", "front-end", "react", "typescript", "javascript", "next"),
-    "fullstack": ("fullstack", "full-stack", "full stack"),
-    "data": ("data engineer", "machine learning", "ml engineer", "ai engineer"),
-    "junior": ("junior", "intern", "working student", "graduate", "entry"),
-}
+ROLE_FILTERS = [
+    ("fullstack", re.compile(r"\b(full[- ]?stack|fullstack)\b", re.IGNORECASE)),
+    ("backend", re.compile(r"\b(backend|back[- ]?end|api|python|java|golang|go|node\.?(js)?|php|ruby|scala)\b", re.IGNORECASE)),
+    ("frontend", re.compile(r"\b(frontend|front[- ]?end|react|next\.?js|javascript|typescript|web ui|ui engineer)\b", re.IGNORECASE)),
+    ("data_ai", re.compile(r"\b(data engineer|data scientist|machine learning|\bml\b|ai engineer|analytics engineer|data platform|computer vision|nlp|data\b)\b", re.IGNORECASE)),
+    ("devops_platform", re.compile(r"\b(devops|sre|site reliability|platform|cloud|infrastructure|systems?)\b", re.IGNORECASE)),
+    ("security", re.compile(r"\b(security|application security|appsec|iam|soc)\b", re.IGNORECASE)),
+    ("mobile", re.compile(r"\b(android|ios|mobile|react native|flutter)\b", re.IGNORECASE)),
+    ("qa", re.compile(r"\b(qa|quality assurance|test automation|sdet|engineer in test)\b", re.IGNORECASE)),
+    ("product", re.compile(r"\b(product manager|product owner|technical product manager)\b", re.IGNORECASE)),
+]
+
+LEVEL_FILTERS = [
+    ("intern", re.compile(r"\b(intern|internship|working student|werkstudent|praktik|praktikum|thesis student)\b", re.IGNORECASE)),
+    ("junior", re.compile(r"\b(junior|entry[- ]?level|graduate|trainee|associate)\b", re.IGNORECASE)),
+    ("staff_plus", re.compile(r"\b(staff|principal|distinguished|fellow)\b", re.IGNORECASE)),
+    ("lead", re.compile(r"\b(team lead|tech lead|lead)\b", re.IGNORECASE)),
+    ("manager_plus", re.compile(r"\b(manager|head|director|vp|chief)\b", re.IGNORECASE)),
+    ("senior", re.compile(r"\b(senior|sr\.?)\b", re.IGNORECASE)),
+]
 
 
 def read_json(path: Path, fallback):
@@ -131,12 +146,19 @@ def safe_float(value, fallback: float, minimum: float, maximum: float) -> float:
 
 
 def load_jobs(source: str) -> list[dict]:
-    path = SOURCES.get(source, SOURCES["related"])
+    path = SOURCES.get(source, SOURCES["all"])
     if not path.exists():
         return []
 
     with path.open("r", encoding="utf-8", newline="") as handle:
         return [{key: value for key, value in row.items()} for row in csv.DictReader(handle)]
+
+
+def visible_jobs(source: str) -> list[dict]:
+    rows = load_jobs(source)
+    if source in {"all", "daily"}:
+        rows = [row for row in rows if is_berlin_job(row)]
+    return dedupe_rows(rows, source)
 
 
 def row_value(row: dict, *keys: str) -> str:
@@ -163,13 +185,72 @@ def text_blob(row: dict) -> str:
     ).casefold()
 
 
+def title_department_blob(row: dict) -> str:
+    return " ".join(
+        row_value(row, key)
+        for key in ["Job Title", "Department"]
+    ).casefold()
+
+
+def is_berlin_job(row: dict) -> bool:
+    location = row_value(row, "Location").casefold()
+    return "berlin" in location
+
+
+def preview_text(value: str, max_length: int = 220) -> str:
+    text = " ".join(str(value or "").split())
+    if len(text) <= max_length:
+        return text
+    return f"{text[:max_length - 1].rstrip()}..."
+
+
+def normalize_identity_value(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", str(value or "").casefold())
+    normalized = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+    return re.sub(r"[^a-z0-9]+", " ", normalized).strip()
+
+
+def row_identity(row: dict) -> tuple[str, str, str] | None:
+    company = normalize_identity_value(row_value(row, "Company Name", "Company"))
+    title = normalize_identity_value(row_value(row, "Job Title"))
+    location = normalize_identity_value(row_value(row, "Location"))
+    if not company or not title:
+        return None
+    return (company, title, location)
+
+
+def row_sort_priority(row: dict, source: str) -> tuple:
+    if source == "related":
+        return (
+            safe_int(row.get("Fit Score"), 0, 0, 999),
+            sortable_posted_date(row_value(row, "Posted Date")),
+            row_value(row, "Job Link"),
+        )
+    return (
+        sortable_posted_date(row_value(row, "Posted Date")),
+        safe_int(row.get("Fit Score"), 0, 0, 999),
+        row_value(row, "Job Link"),
+    )
+
+
+def dedupe_rows(rows: list[dict], source: str) -> list[dict]:
+    deduped: dict[tuple[str, str, str] | str, dict] = {}
+    for row in rows:
+        identity = row_identity(row)
+        key = identity or row_value(row, "Job Link") or str(id(row))
+        current = deduped.get(key)
+        if current is None or row_sort_priority(row, source) > row_sort_priority(current, source):
+            deduped[key] = row
+    return list(deduped.values())
+
+
 def compact_job(row: dict) -> dict:
     return {
         "company": row_value(row, "Company Name", "Company"),
         "title": row_value(row, "Job Title"),
         "location": row_value(row, "Location"),
         "link": row_value(row, "Job Link"),
-        "description": row_value(row, "Job Description"),
+        "description": preview_text(row_value(row, "Job Description")),
         "employmentType": row_value(row, "Employment Type"),
         "department": row_value(row, "Department"),
         "postedDate": row_value(row, "Posted Date"),
@@ -182,11 +263,49 @@ def compact_job(row: dict) -> dict:
     }
 
 
-def filter_jobs(rows: list[dict], params: dict) -> list[dict]:
+def classify_role(row: dict) -> str:
+    text = title_department_blob(row)
+    for key, pattern in ROLE_FILTERS:
+        if pattern.search(text):
+            return key
+    return "other"
+
+
+def classify_level(row: dict) -> str:
+    text = title_department_blob(row)
+    for key, pattern in LEVEL_FILTERS:
+        if pattern.search(text):
+            return key
+    return "unspecified"
+
+
+def classify_remote_mode(value: str) -> str:
+    text = normalize_identity_value(value)
+    if not text or text in {"no", "on site", "onsite"}:
+        return "on_site"
+    if "hybrid" in text:
+        return "hybrid"
+    if text in {"yes", "remote"} or "remote" in text:
+        return "remote"
+    return "other"
+
+
+def sortable_posted_date(value: str) -> tuple[int, str]:
+    text = str(value or "").strip()
+    if not text:
+        return (0, "")
+    try:
+        parsed = datetime.fromisoformat(text)
+        return (1, parsed.isoformat())
+    except ValueError:
+        return (0, text)
+
+
+def filter_jobs(rows: list[dict], params: dict, source: str) -> list[dict]:
     query = first_param(params, "q").casefold()
     role = first_param(params, "role")
+    level = first_param(params, "level")
     remote = first_param(params, "remote")
-    min_score = safe_int(first_param(params, "minScore"), 0, 0, 999)
 
     filtered = []
     for row in rows:
@@ -195,16 +314,26 @@ def filter_jobs(rows: list[dict], params: dict) -> list[dict]:
 
         if query and query not in blob:
             continue
-        if role and role != "all" and not any(keyword in blob for keyword in ROLE_KEYWORDS.get(role, ())):
+        if role and role != "all" and classify_role(row) != role:
             continue
-        if remote and remote != "all" and job["remote"].casefold() != remote.casefold():
+        if level and level != "all" and classify_level(row) != level:
             continue
-        if min_score and job["fitScore"] < min_score:
+        remote_mode = classify_remote_mode(job["remote"])
+        if remote == "remote_or_hybrid" and remote_mode not in {"remote", "hybrid"}:
+            continue
+        if remote and remote not in {"all", "remote_or_hybrid"} and remote_mode != remote:
             continue
 
         filtered.append(job)
 
-    filtered.sort(key=lambda item: (item["fitScore"], item["company"], item["title"]), reverse=True)
+    filtered.sort(
+        key=lambda item: (
+            sortable_posted_date(item["postedDate"]),
+            item["company"].casefold(),
+            item["title"].casefold(),
+        ),
+        reverse=True,
+    )
     return filtered
 
 
@@ -216,7 +345,7 @@ def first_param(params: dict, key: str) -> str:
 def source_summary() -> dict:
     summary = {}
     for source, path in SOURCES.items():
-        rows = load_jobs(source)
+        rows = visible_jobs(source) if source != "linkedin" else load_jobs(source)
         summary[source] = {
             "count": len(rows),
             "path": str(path.relative_to(REPO_ROOT)),
@@ -477,9 +606,9 @@ class DailyBerlinJobsHandler(SimpleHTTPRequestHandler):
         parsed = urlparse(self.path)
         if parsed.path == "/api/jobs":
             params = parse_qs(parsed.query)
-            source = first_param(params, "source") or "related"
-            jobs = filter_jobs(load_jobs(source), params)
-            self.send_json({"source": source, "count": len(jobs), "jobs": jobs[:500]})
+            source = first_param(params, "source") or "all"
+            jobs = filter_jobs(visible_jobs(source), params, source)
+            self.send_json({"source": source, "count": len(jobs), "jobs": jobs})
             return
         if parsed.path == "/api/summary":
             self.send_json({

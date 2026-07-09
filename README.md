@@ -60,11 +60,14 @@ python3 main.py -t sheets "GOOGLE_SHEET_URL_OR_ID" \
 python3 main.py -t sheets "https://docs.google.com/spreadsheets/d/1sYI0IqzXp_W19eAYDCdC46ZjzrWqW5fwHfY0sAzUxKw/edit?gid=2095282077#gid=2095282077" \
   --input-worksheet OneSingle
 
-# Build Related Jobs and Daily New Jobs outputs
+# Build Daily New Jobs outputs and refresh UI data
 python3 post_process_jobs.py
 
 # Open the local Daily Berlin Software Jobs app
 python3 daily_berlin_jobs/server.py
+
+# Inspect current role / level keyword distribution
+python3 scripts/analyze_job_filters.py --source all --top 12
 ```
 
 ## 📊 System Status
@@ -110,11 +113,38 @@ python3 daily_berlin_jobs/server.py
 
 Then open `http://127.0.0.1:8765`.
 
-The UI reads `data/related_jobs.csv` and `data/daily_new_jobs.csv` for the main
-job views. LinkedIn daily collection stays included in the daily pipeline, while
-the homepage keeps only lightweight filters and a small settings panel for update
-controls. By default it runs in local preview mode, so it does not push to Google
-Sheets unless you turn that off in settings.
+The UI reads `data/all_jobs.csv` and `data/daily_new_jobs.csv` and presents two
+consumer-facing views:
+
+- `All Jobs` for the full local Berlin market snapshot
+- `New Today` for fresh Berlin roles since the last saved baseline
+
+The homepage now stays intentionally minimal and consumer-oriented:
+
+- small hero / status area
+- search
+- filters for `Level`, `Role`, and `Work Mode`
+- a simple clickable jobs table
+
+LinkedIn daily collection still feeds the refresh pipeline, while the UI keeps
+the settings panel lightweight. By default it runs in local preview mode, so it
+does not push to Google Sheets unless you turn that off in settings.
+
+### Current consumer filters
+
+- `Level`: Intern / Working Student, Junior / Entry, Senior, Staff / Principal, Lead, Manager / Head / Director
+- `Role`: Backend, Frontend, Fullstack, Data / AI / ML, Platform / DevOps / SRE, Security, Mobile, QA / Test, Product
+- `Work Mode`: Remote or Hybrid, Remote, Hybrid, On-site
+
+### Filter analysis helper
+
+Use the helper script below to inspect the current Berlin-market title
+distribution and refine filter taxonomy decisions:
+
+```bash
+python3 scripts/analyze_job_filters.py --source all --top 12
+python3 scripts/analyze_job_filters.py --source daily --top 12
+```
 
 ## ⚙️ Configuration Options
 
@@ -144,8 +174,8 @@ Google Sheets support uses a service account. Configure one of these before runn
 
 Share the spreadsheet with the service-account email so it can read and update worksheets.
 
-API-key credentials can read public/readable sheets. Updating `Related Jobs` and
-`Daily New Jobs` requires either `GOOGLE_SERVICE_ACCOUNT_JSON`,
+API-key credentials can read public/readable sheets. Updating `Daily New Jobs`
+and syncing the local crawler outputs requires either `GOOGLE_SERVICE_ACCOUNT_JSON`,
 `GOOGLE_SERVICE_ACCOUNT_FILE`, `GOOGLE_APPLICATION_CREDENTIALS`, or local Google
 Application Default Credentials with Sheets write scope.
 
