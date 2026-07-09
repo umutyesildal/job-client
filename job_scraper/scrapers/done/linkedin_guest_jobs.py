@@ -1,6 +1,6 @@
 """
-LinkedIn Scraper - API-based guest scraper
-Scrapes job listings from public LinkedIn guest search pages and enriches them by crawling job descriptions and criteria.
+LinkedIn Guest Jobs - API-based public job collector
+Collects job listings from public LinkedIn guest search pages and enriches them by crawling job descriptions and criteria.
 """
 
 import requests
@@ -13,13 +13,9 @@ from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 logger = logging.getLogger(__name__)
 
 
-class LinkedInScraper:
+class LinkedInGuestJobsClient:
     """
-    Scraper for LinkedIn Job guest API.
-    
-    Usage:
-        scraper = LinkedInScraper()
-        jobs = scraper.scrape_jobs(url, company_name, company_description, label)
+    Client for the LinkedIn Jobs guest API.
     """
 
     def __init__(self, delay: float = 1.0):
@@ -32,7 +28,7 @@ class LinkedInScraper:
 
     def scrape_jobs(self, url: str, company_name: str, company_description: str = '', label: str = '', limit: int = 50) -> List[Dict]:
         """
-        Scrape jobs from LinkedIn Guest Search URL.
+        Collect jobs from LinkedIn Guest Search URL.
         Paginates until limits are met or no more listings are returned.
         
         Args:
@@ -54,7 +50,7 @@ class LinkedInScraper:
         
         start = 0
         
-        logger.info(f"Starting LinkedIn scraping for {company_name}...")
+        logger.info(f"Starting LinkedIn collection for {company_name}...")
         
         while len(jobs) < limit:
             current_params = query_params.copy()
@@ -102,10 +98,10 @@ class LinkedInScraper:
                 time.sleep(self.delay)
                 
             except Exception as e:
-                logger.error(f"Error scraping LinkedIn page at start={start}: {e}")
+                logger.error(f"Error collecting LinkedIn page at start={start}: {e}")
                 break
                 
-        logger.info(f"Completed LinkedIn scraping. Found {len(jobs)} jobs.")
+        logger.info(f"Completed LinkedIn collection. Found {len(jobs)} jobs.")
         return jobs
 
     def _parse_job_card(self, li, company_name: str, company_description: str, label: str) -> Dict:

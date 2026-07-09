@@ -21,7 +21,7 @@ from scrapers.done.stripe_scraper import StripeScraper
 from scrapers.done.traderepublic_scraper import TradeRepublicScraper
 from scrapers.done.wipro_scraper import WiproScraper
 from scrapers.done.workable_scraper import WorkableScraper
-from scrapers.done.linkedin_scraper import LinkedInScraper
+from scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
 import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -94,7 +94,7 @@ class JobCrawlerController:
         'traderepublic': TradeRepublicScraper,
         'wipro': WiproScraper,
         'workable': WorkableScraper,
-        'linkedin': LinkedInScraper,
+        'linkedin': LinkedInGuestJobsClient,
     }
     
     def __init__(self, delay: float = 2.0, output_dir: str = '../../data', max_workers: int = None):

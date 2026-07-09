@@ -1,5 +1,5 @@
 """
-Post-process scraped jobs for Google Sheets outputs.
+Post-process collected jobs for Google Sheets outputs.
 
 Creates:
 - Related Jobs: Berlin roles scored against Umut's early-career software profile
@@ -15,6 +15,7 @@ from typing import Optional
 import pandas as pd
 
 from data_controller import DataController
+from linkedin_daily import collect_daily_linkedin_jobs, save_linkedin_daily_jobs
 
 
 DEFAULT_SPREADSHEET = (
@@ -67,7 +68,7 @@ ENGINEERING_TITLE_PATTERN = re.compile(
 )
 
 STACK_RULES = [
-    (re.compile(r"\b(python|selenium|scrap(?:e|er|ing)|crawler)\b", re.IGNORECASE), 2, "Python/scraping"),
+    (re.compile(r"\b(python|selenium|scrap(?:e|er|ing)|crawler)\b", re.IGNORECASE), 2, "Python/data collection"),
     (re.compile(r"\b(node\.?js|node|javascript|typescript|js|ts)\b", re.IGNORECASE), 2, "Node/JS"),
     (re.compile(r"\b(react|next\.?js|react native|flutter|dart)\b", re.IGNORECASE), 2, "React/mobile"),
     (re.compile(r"\b(n8n|make\.com|make|notion api|workflow|automation)\b", re.IGNORECASE), 2, "automation tools"),
@@ -242,6 +243,40 @@ def save_csv(df: pd.DataFrame, path: Path) -> None:
     df.to_csv(path, index=False, encoding="utf-8")
 
 
+def append_linkedin_daily_jobs(
+    current_df: pd.DataFrame,
+    output_path: Path,
+    keywords,
+    location: str,
+    limit_per_query: int,
+    delay: float,
+    posted_within_seconds: int,
+    related_only: bool,
+) -> pd.DataFrame:
+    linkedin_df = collect_daily_linkedin_jobs(
+        keywords=keywords,
+        location=location,
+        limit_per_query=limit_per_query,
+        delay=delay,
+        posted_within_seconds=posted_within_seconds,
+    )
+    raw_count = len(linkedin_df)
+    if related_only and not linkedin_df.empty:
+        linkedin_df = filter_related_jobs(linkedin_df)
+
+    save_linkedin_daily_jobs(linkedin_df, output_path)
+    if related_only:
+        print(f"LinkedIn daily jobs: {len(linkedin_df)} profile-fit rows from {raw_count} raw rows -> {output_path}")
+    else:
+        print(f"LinkedIn daily jobs: {len(linkedin_df)} raw rows -> {output_path}")
+
+    if linkedin_df.empty:
+        return current_df
+
+    combined_df = pd.concat([current_df, linkedin_df], ignore_index=True, sort=False).fillna("")
+    return DataController().normalize_jobs_dataframe(combined_df)
+
+
 def upload_to_sheet(df: pd.DataFrame, spreadsheet: str, worksheet: str, max_upload_lines: int) -> bool:
     if max_upload_lines and max_upload_lines > 0:
         data_rows = max(max_upload_lines - 1, 0)
@@ -263,6 +298,8 @@ def main() -> int:
                         help="Previous pulled jobs baseline path")
     parser.add_argument("--related-output", default=str(data_dir / "related_jobs.csv"), help="Related jobs CSV output")
     parser.add_argument("--daily-output", default=str(data_dir / "daily_new_jobs.csv"), help="Daily new jobs CSV output")
+    parser.add_argument("--linkedin-output", default=str(data_dir / "linkedin_daily_jobs.csv"),
+                        help="LinkedIn daily query CSV output")
     parser.add_argument("--spreadsheet", default=DEFAULT_SPREADSHEET, help="Google spreadsheet URL or ID")
     parser.add_argument("--related-worksheet", default="Related Jobs", help="Related jobs worksheet name")
     parser.add_argument("--daily-worksheet", default="Daily New Jobs", help="Daily new jobs worksheet name")
@@ -276,6 +313,19 @@ def main() -> int:
                         help="Do not replace the previous pulled jobs baseline after a successful run")
     parser.add_argument("--skip-upload", action="store_true", help="Only write local CSV files")
     parser.add_argument("--skip-daily-upload", action="store_true", help="Do not update the daily-new worksheet")
+    parser.add_argument("--include-linkedin-daily", action="store_true",
+                        help="Append recent LinkedIn software engineering searches before filtering/uploading")
+    parser.add_argument("--linkedin-keywords", nargs="*",
+                        help="LinkedIn query keywords; defaults to software/backend/frontend/fullstack variants")
+    parser.add_argument("--linkedin-location", default="Berlin, Germany", help="LinkedIn query location")
+    parser.add_argument("--linkedin-limit-per-query", type=int, default=25,
+                        help="Maximum LinkedIn jobs to fetch per keyword")
+    parser.add_argument("--linkedin-delay", type=float, default=1.0,
+                        help="Delay between LinkedIn guest requests")
+    parser.add_argument("--linkedin-posted-within-seconds", type=int, default=86400,
+                        help="LinkedIn posted-time filter in seconds; 86400 means last 24 hours")
+    parser.add_argument("--linkedin-raw-daily", action="store_true",
+                        help="Append raw LinkedIn daily results instead of profile-fit rows only")
 
     args = parser.parse_args()
 
@@ -289,6 +339,18 @@ def main() -> int:
     previous_path = Path(args.previous) if args.previous else None
 
     current_df = load_jobs(current_path)
+    if args.include_linkedin_daily:
+        current_df = append_linkedin_daily_jobs(
+            current_df=current_df,
+            output_path=Path(args.linkedin_output),
+            keywords=args.linkedin_keywords,
+            location=args.linkedin_location,
+            limit_per_query=args.linkedin_limit_per_query,
+            delay=args.linkedin_delay,
+            posted_within_seconds=args.linkedin_posted_within_seconds,
+            related_only=not args.linkedin_raw_daily,
+        )
+
     related_df = filter_related_jobs(current_df)
     daily_new_df = find_daily_new_jobs(current_df, previous_path)
 

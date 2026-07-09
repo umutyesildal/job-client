@@ -1,5 +1,5 @@
 """
-query_linkedin.py - CLI tool to run dynamic LinkedIn guest scrapes and option to score results.
+query_linkedin.py - CLI tool to run dynamic LinkedIn guest job queries and option to score results.
 """
 
 import os
@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 # Add current and parent directories to sys.path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from scrapers.done.linkedin_scraper import LinkedInScraper
+from scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
 
 def main():
     parser = argparse.ArgumentParser(description="Query LinkedIn Guest Job Search API dynamically")
@@ -40,11 +40,9 @@ def main():
     logger.info(f"Target URL: {url}")
     logger.info(f"Parameters: Keywords='{args.keywords}', Location='{args.location}', Limit={args.limit}, Delay={args.delay}s")
 
-    # Instantiate scraper
-    scraper = LinkedInScraper(delay=args.delay)
+    client = LinkedInGuestJobsClient(delay=args.delay)
     
-    # Scrape jobs
-    jobs = scraper.scrape_jobs(url, company_name="Various", label="linkedin", limit=args.limit)
+    jobs = client.scrape_jobs(url, company_name="Various", label="linkedin", limit=args.limit)
 
     if not jobs:
         logger.warning("No jobs were found.")
@@ -74,7 +72,7 @@ def main():
             scored_df = filter_related_jobs(df)
             
             if scored_df.empty:
-                logger.info("No scraped jobs matched your early-career profile fit criteria.")
+                logger.info("No collected jobs matched your early-career profile fit criteria.")
             else:
                 scored_output_path = output_path.replace(".csv", "_scored.csv")
                 scored_df.to_csv(scored_output_path, index=False, encoding="utf-8")
