@@ -9,7 +9,7 @@ job_scraper/
 ├── scrapers/done/         # 23 working implementations
 ├── scrapers/undone/       # 6 incomplete implementations
 ├── scrapers/template_scraper.py
-└── src/main_crawler.py    # Orchestration engine
+└── src/main.py            # Orchestration engine
 ```
 
 ## Implementation Status
@@ -54,16 +54,26 @@ Output format:
 cd job_scraper/src
 
 # Test single company
-python3 main_crawler.py -l 1
+python3 main.py -l 1
 
 # Fast development cycle
-python3 main_crawler.py -l 3 -d 0.1
+python3 main.py -l 3 -d 0.1
+
+# Google Sheets input/output
+python3 main.py -t sheets "GOOGLE_SHEET_URL_OR_ID" \
+  --input-worksheet companies \
+  --output-sheet "GOOGLE_SHEET_URL_OR_ID" \
+  --output-worksheet all_jobs
+
+# Current v2 source sheet
+python3 main.py -t sheets "https://docs.google.com/spreadsheets/d/1sYI0IqzXp_W19eAYDCdC46ZjzrWqW5fwHfY0sAzUxKw/edit?gid=2095282077#gid=2095282077" \
+  --input-worksheet OneSingle
+
+# Build Related Jobs and Daily New Jobs outputs
+python3 post_process_jobs.py
 
 # Add new scraper
 cp scrapers/template_scraper.py scrapers/undone/new_scraper.py
-# Edit implementation, add to SCRAPER_MAP in main_crawler.py
+# Edit implementation, add to SCRAPER_MAP in src/client.py
 ```
-
-
-
 
