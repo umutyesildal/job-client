@@ -6,6 +6,11 @@ export type Job = {
   postedDate: string;
   remote: string;
   department: string;
+  keywords: string[];
+  techStack: string[];
+  level: string;
+  role: string;
+  workMode: string;
 };
 
 export type JobsSnapshot = {

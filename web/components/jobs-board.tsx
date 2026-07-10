@@ -1,7 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { Job, JobsSnapshot } from "@/lib/jobs";
+
+const PAGE_SIZE = 40;
 
 function jobDate(value: string): string {
   const parsed = new Date(value);
@@ -9,64 +11,154 @@ function jobDate(value: string): string {
   return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(parsed);
 }
 
+function dateValue(value: string): number {
+  const parsed = new Date(value).getTime();
+  return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function options(jobs: Job[], field: "role" | "level" | "workMode"): string[] {
+  return [...new Set(jobs.map((job) => job[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+}
+
 export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
   const [source, setSource] = useState<"all" | "daily">("all");
   const [query, setQuery] = useState("");
+  const [role, setRole] = useState("");
+  const [level, setLevel] = useState("");
+  const [workMode, setWorkMode] = useState("");
+  const [tech, setTech] = useState("");
+  const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc");
+  const [page, setPage] = useState(1);
   const jobs = source === "all" ? snapshot.all : snapshot.daily;
+
+  const filterOptions = useMemo(() => ({
+    roles: options(jobs, "role"),
+    levels: options(jobs, "level"),
+    workModes: options(jobs, "workMode"),
+    technologies: [...new Set(jobs.flatMap((job) => job.techStack))].sort((a, b) => a.localeCompare(b)),
+  }), [jobs]);
+
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase();
-    return jobs.filter((job) =>
-      !needle || [job.title, job.company, job.location, job.department]
-        .join(" ").toLocaleLowerCase().includes(needle),
-    );
-  }, [jobs, query]);
+    return jobs
+      .filter((job) => {
+        const searchable = [job.title, job.company, job.location, job.department, job.role, job.level, ...job.keywords, ...job.techStack]
+          .join(" ").toLocaleLowerCase();
+        return (!needle || searchable.includes(needle))
+          && (!role || job.role === role)
+          && (!level || job.level === level)
+          && (!workMode || job.workMode === workMode)
+          && (!tech || job.techStack.includes(tech));
+      })
+      .sort((a, b) => {
+        const dateDifference = dateValue(a.postedDate) - dateValue(b.postedDate);
+        if (dateDifference) return sortDirection === "asc" ? dateDifference : -dateDifference;
+        return a.company.localeCompare(b.company) || a.title.localeCompare(b.title);
+      });
+  }, [jobs, query, role, level, workMode, tech, sortDirection]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, pageCount);
+  const visibleJobs = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const hasFilters = Boolean(query || role || level || workMode || tech);
+
+  useEffect(() => setPage(1), [source, query, role, level, workMode, tech, sortDirection]);
+
+  function clearFilters() {
+    setQuery("");
+    setRole("");
+    setLevel("");
+    setWorkMode("");
+    setTech("");
+  }
 
   return (
     <main className="page-shell">
       <header className="topbar">
-        <div>
-          <span className="eyebrow">Berlin Software Jobs</span>
-          <h1>Daily Berlin Jobs</h1>
-        </div>
-        <a className="admin-link" href="/admin">Admin</a>
+        <a className="brand" href="/" aria-label="Daily Berlin Jobs home">
+          <span className="brand-mark">B</span>
+          <span>Daily Berlin Jobs</span>
+        </a>
+        <span className="header-note">Fresh Berlin tech roles, daily.</span>
       </header>
 
       <section className="hero">
-        <span className="eyebrow">Updated from Google Sheets</span>
-        <h2>Find current software roles across Berlin.</h2>
-        <p>One clean board, refreshed daily from company career pages and LinkedIn.</p>
+        <span className="eyebrow">Updated daily from Google Sheets</span>
+        <h1>Software jobs in Berlin,<br />without the noise.</h1>
+        <p>Current roles from company career pages and LinkedIn, collected in one place.</p>
       </section>
 
       <section className="controls">
         <div className="tabs">
-          <button className={source === "all" ? "active" : ""} onClick={() => setSource("all")}>
-            All Jobs <b>{snapshot.all.length}</b>
-          </button>
-          <button className={source === "daily" ? "active" : ""} onClick={() => setSource("daily")}>
-            New Today <b>{snapshot.daily.length}</b>
-          </button>
+          <button className={source === "all" ? "active" : ""} onClick={() => setSource("all")}>All Jobs <b>{snapshot.all.length}</b></button>
+          <button className={source === "daily" ? "active" : ""} onClick={() => setSource("daily")}>New Today <b>{snapshot.daily.length}</b></button>
         </div>
-        <input
-          aria-label="Search jobs"
-          placeholder="Search role, company, or location"
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-        />
+        <input aria-label="Search jobs" placeholder="Search role, company, keyword, or technology" type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
+      </section>
+
+      <section className="filter-bar" aria-label="Job filters">
+        <label className="filter-field"><span>Role</span><select value={role} onChange={(event) => setRole(event.target.value)}>
+          <option value="">Any role</option>{filterOptions.roles.map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+        <label className="filter-field"><span>Level</span><select value={level} onChange={(event) => setLevel(event.target.value)}>
+          <option value="">Any level</option>{filterOptions.levels.map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+        <label className="filter-field"><span>Work style</span><select value={workMode} onChange={(event) => setWorkMode(event.target.value)}>
+          <option value="">Any work style</option>{filterOptions.workModes.map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+        <label className="filter-field"><span>Technology</span><select value={tech} onChange={(event) => setTech(event.target.value)}>
+          <option value="">Any technology</option>{filterOptions.technologies.map((item) => <option key={item}>{item}</option>)}
+        </select></label>
+        <button className="clear-filters" disabled={!hasFilters} onClick={clearFilters}>Clear</button>
+        <span className="result-count">{filtered.length} jobs</span>
       </section>
 
       <div className="jobs-table">
-        <div className="table-head"><span>Role</span><span>Company</span><span>Location</span><span>Date</span></div>
-        {filtered.map((job: Job, index) => (
+        <div className="table-head">
+          <span>Role</span><span>Company</span><span>Location</span>
+          <button className="sort-button" onClick={() => setSortDirection((current) => current === "desc" ? "asc" : "desc")}>
+            Date <span aria-hidden="true">{sortDirection === "desc" ? "↓" : "↑"}</span>
+          </button>
+        </div>
+        {visibleJobs.map((job: Job, index) => (
           <a className="job-row" href={job.link || undefined} target="_blank" rel="noreferrer" key={`${job.link}-${index}`}>
-            <strong>{job.title || "Untitled role"}</strong>
+            <div className="role-cell">
+              <strong>{job.title || "Untitled role"}</strong>
+              <div className="job-tags">
+                {job.role !== "Other" && <span className="role-tag">{job.role}</span>}
+                {job.level !== "Not specified" && <span className="meta-tag">{job.level}</span>}
+                <span className="meta-tag">{job.workMode}</span>
+                {job.techStack.slice(0, 4).map((item) => <span className="tech-tag" key={item}>{item}</span>)}
+                {job.keywords
+                  .filter((item) => item !== job.role && item !== job.department && !job.techStack.includes(item))
+                  .slice(0, 2)
+                  .map((item) => <span className="keyword-tag" key={item}>{item}</span>)}
+              </div>
+            </div>
             <span>{job.company || "Unknown company"}</span>
             <span>{job.location || "Berlin"}</span>
             <time>{jobDate(job.postedDate)}</time>
           </a>
         ))}
-        {!filtered.length && <p className="empty">No jobs match this search.</p>}
+        {!filtered.length && <p className="empty">No jobs match these filters.</p>}
       </div>
+
+      {filtered.length > 0 && (
+        <nav className="pagination" aria-label="Job list pages">
+          <button disabled={currentPage === 1} onClick={() => setPage((current) => current - 1)}>Previous</button>
+          <span>Page {currentPage} of {pageCount}</span>
+          <button disabled={currentPage === pageCount} onClick={() => setPage((current) => current + 1)}>Next</button>
+        </nav>
+      )}
+
+      <footer className="site-footer">
+        <span>Made with care by Umut.</span>
+        <nav aria-label="Creator links">
+          <a href="https://www.linkedin.com/in/umutyesildal" target="_blank" rel="noreferrer">LinkedIn</a>
+          <a href="https://github.com/umutyesildal" target="_blank" rel="noreferrer">GitHub</a>
+          <a className="admin-footer-link" href="/admin" aria-label="Admin">Admin</a>
+        </nav>
+      </footer>
     </main>
   );
 }
