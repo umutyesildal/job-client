@@ -50,6 +50,8 @@ data/*.txt
 !web/package.json
 !web/package-lock.json
 !web/tsconfig.json
+!web/lib/
+!web/lib/**
 
 *.env
 
