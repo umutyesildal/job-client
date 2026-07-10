@@ -9,8 +9,10 @@ Creates:
 import argparse
 import re
 import unicodedata
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 
@@ -97,6 +99,25 @@ NON_BERLIN_LOCATION_PATTERN = re.compile(
     r"braunschweig|helsinki|lisbon|warsaw|prague|vienna|madrid|barcelona)\b",
     re.IGNORECASE,
 )
+
+PUBLISHED_SOFTWARE_TITLE_PATTERN = re.compile(
+    r"\b(?:software|backend|back[- ]?end|frontend|front[- ]?end|full[- ]?stack|developer|"
+    r"development engineer|devops|sre|site reliability|platform engineer|cloud engineer|"
+    r"infrastructure engineer|data engineer|data scientist|machine learning|ml engineer|"
+    r"ai engineer|security engineer|application security|mobile engineer|android|ios engineer|"
+    r"qa engineer|test automation|sdet|product engineer|technical product manager|"
+    r"solutions architect|deployment engineer|deployments engineer)\b",
+    re.IGNORECASE,
+)
+
+PUBLISHED_TITLE_EXCLUDE_PATTERN = re.compile(
+    r"\b(?:sales engineer|customer success|support engineer|field engineer|mechanical engineer|"
+    r"electrical engineer|civil engineer|process engineer|manufacturing engineer|account executive|"
+    r"recruiter|talent acquisition|marketing|partnerships?|finance)\b",
+    re.IGNORECASE,
+)
+
+EMPTY_JOB_VALUES = {"", "unknown", "n/a", "na", "none", "null", "-"}
 
 
 def load_jobs(path: Path) -> pd.DataFrame:
@@ -192,6 +213,62 @@ def filter_related_jobs(df: pd.DataFrame) -> pd.DataFrame:
         by=["Fit Score", "Company", "Job Title"],
         ascending=[False, True, True],
     )
+
+
+def filter_published_jobs(df: pd.DataFrame) -> pd.DataFrame:
+    """Build the cumulative, consumer-facing Berlin software jobs collection."""
+    normalized = DataController().normalize_jobs_dataframe(df.fillna(""))
+    title = normalized["Job Title"].astype(str).str.strip()
+    company = normalized["Company Name"].astype(str).str.strip()
+    location = normalized["Location"].astype(str).str.strip()
+
+    valid = (
+        location.str.contains(r"\bberlin\b", case=False, regex=True, na=False)
+        & title.str.contains(PUBLISHED_SOFTWARE_TITLE_PATTERN, na=False)
+        & ~title.str.contains(PUBLISHED_TITLE_EXCLUDE_PATTERN, na=False)
+        & ~title.str.casefold().isin(EMPTY_JOB_VALUES)
+        & ~company.str.casefold().isin(EMPTY_JOB_VALUES)
+        & ~location.str.casefold().isin(EMPTY_JOB_VALUES)
+    )
+    published = normalized[valid].copy()
+
+    links = published["Job Link"].astype(str).str.strip()
+    with_links = published[links.ne("")].drop_duplicates(subset=["Job Link"], keep="last")
+    without_links = published[links.eq("")].drop_duplicates(
+        subset=["Company Name", "Job Title", "Location"], keep="last"
+    )
+    return pd.concat([with_links, without_links], ignore_index=True, sort=False).fillna("")
+
+
+def _published_date(value: str, today: date) -> Optional[date]:
+    raw = str(value or "").strip()
+    if raw.casefold() in EMPTY_JOB_VALUES:
+        return None
+
+    relative = re.fullmatch(r"(\d+)\s+(hour|hours|day|days)\s+ago", raw, re.IGNORECASE)
+    if relative:
+        amount = int(relative.group(1))
+        return today - timedelta(days=amount if "day" in relative.group(2).casefold() else 0)
+
+    parsed = pd.to_datetime(raw, errors="coerce")
+    if pd.isna(parsed):
+        return None
+    return parsed.date()
+
+
+def filter_recent_published_jobs(df: pd.DataFrame, today: Optional[date] = None) -> pd.DataFrame:
+    """Return only jobs whose posted date is today or yesterday in Berlin time."""
+    today = today or datetime.now(ZoneInfo("Europe/Berlin")).date()
+    allowed_dates = {today, today - timedelta(days=1)}
+    posted_dates = df["Posted Date"].map(lambda value: _published_date(value, today))
+    return df[posted_dates.isin(allowed_dates)].copy()
+
+
+def merge_published_jobs(current_df: pd.DataFrame, previous_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """Preserve the prior canonical collection and add this run's valid jobs."""
+    frames = [previous_df, current_df] if previous_df is not None else [current_df]
+    combined = pd.concat([frame for frame in frames if frame is not None], ignore_index=True, sort=False).fillna("")
+    return filter_published_jobs(combined)
 
 
 def _normalize_identity_value(value: str) -> str:
@@ -297,11 +374,14 @@ def main() -> int:
     parser.add_argument("--previous", default=str(data_dir / "last_pulled_jobs.csv"),
                         help="Previous pulled jobs baseline path")
     parser.add_argument("--related-output", default=str(data_dir / "related_jobs.csv"), help="Related jobs CSV output")
+    parser.add_argument("--all-output", default=str(data_dir / "published_all_jobs.csv"),
+                        help="Cumulative consumer-facing Berlin software jobs CSV output")
     parser.add_argument("--daily-output", default=str(data_dir / "daily_new_jobs.csv"), help="Daily new jobs CSV output")
     parser.add_argument("--linkedin-output", default=str(data_dir / "linkedin_daily_jobs.csv"),
                         help="LinkedIn daily query CSV output")
     parser.add_argument("--spreadsheet", default=DEFAULT_SPREADSHEET, help="Google spreadsheet URL or ID")
     parser.add_argument("--related-worksheet", default="Related Jobs", help="Related jobs worksheet name")
+    parser.add_argument("--all-worksheet", default="All Jobs", help="All published jobs worksheet name")
     parser.add_argument("--daily-worksheet", default="Daily New Jobs", help="Daily new jobs worksheet name")
     parser.add_argument("--max-upload-lines", type=int,
                         help="Legacy cap for both worksheets, including the header row")
@@ -364,22 +444,28 @@ def main() -> int:
                 related_only=not args.linkedin_raw_daily,
             )
 
+    all_output = Path(args.all_output)
+    previous_published_path = all_output if all_output.exists() else Path(args.related_output)
+    previous_published_df = load_jobs(previous_published_path) if previous_published_path.exists() else None
+    published_df = merge_published_jobs(current_df, previous_published_df)
     related_df = filter_related_jobs(current_df)
-    daily_new_df = find_daily_new_jobs(current_df, previous_path)
+    daily_new_df = filter_recent_published_jobs(published_df)
 
     related_output = Path(args.related_output)
     daily_output = Path(args.daily_output)
 
+    save_csv(published_df, all_output)
     save_csv(related_df, related_output)
     save_csv(daily_new_df, daily_output)
 
     print(f"Current jobs: {len(current_df)}")
+    print(f"All published Berlin software jobs: {len(published_df)} -> {all_output}")
     print(f"Related jobs: {len(related_df)} -> {related_output}")
     if previous_path and previous_path.exists():
         print(f"Previous baseline: {previous_path}")
     else:
-        print("Previous baseline: none found, treating this as baseline initialization")
-    print(f"Daily new jobs: {len(daily_new_df)} -> {daily_output}")
+        print("Previous baseline: none found")
+    print(f"New today (today + yesterday): {len(daily_new_df)} -> {daily_output}")
 
     if args.skip_upload:
         if not args.no_update_baseline and previous_path:
@@ -387,6 +473,7 @@ def main() -> int:
             print(f"Updated baseline: {previous_path}")
         return 0
 
+    all_uploaded = upload_to_sheet(published_df, args.spreadsheet, args.all_worksheet, 0)
     related_uploaded = upload_to_sheet(
         related_df,
         args.spreadsheet,
@@ -402,7 +489,7 @@ def main() -> int:
             daily_max_upload_lines
         )
 
-    if related_uploaded and daily_uploaded:
+    if all_uploaded and related_uploaded and daily_uploaded:
         if not args.no_update_baseline and previous_path:
             save_csv(current_df, previous_path)
             print(f"Updated baseline: {previous_path}")

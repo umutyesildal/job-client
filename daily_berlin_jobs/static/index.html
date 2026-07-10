@@ -7,7 +7,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Geist:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" href="/styles.css">
+    <link rel="stylesheet" href="/styles.css?v=20260710-sync-flow-2">
   </head>
   <body>
     <main class="page">
@@ -117,20 +117,28 @@
         <input id="includeLinkedInInput" type="checkbox" disabled checked>
         <span>Include LinkedIn daily</span>
       </label>
-      <label class="toggle">
-        <input id="skipUploadInput" type="checkbox">
-        <span>Local preview only</span>
-      </label>
-
+      <!-- Compatibility shim for an already-cached app.js from before the
+           canonical Sheets flow. Kept unchecked so old clients still upload. -->
+      <input id="skipUploadInput" type="checkbox" hidden aria-hidden="true">
       <div class="settings-actions">
         <button id="saveSettingsBtn" class="secondary-action">Save</button>
         <button id="syncBtn" class="secondary-action">Sync Sheets</button>
         <button id="runBtn" class="primary-action">Run Daily Update</button>
       </div>
 
+      <section id="runProgress" class="run-progress" aria-live="polite" hidden>
+        <div class="run-progress-copy">
+          <span id="runStep">Ready</span>
+          <strong id="runPercent">0%</strong>
+        </div>
+        <div class="progress-track" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+          <span id="progressFill"></span>
+        </div>
+      </section>
+
       <pre id="runLog" class="run-log" aria-live="polite"></pre>
     </aside>
 
-    <script src="/app.js"></script>
+    <script src="/app.js?v=20260710-sync-flow-2"></script>
   </body>
 </html>

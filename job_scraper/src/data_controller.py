@@ -62,23 +62,31 @@ class DataController:
         
         return df
 
-    def load_data_from_google_sheet(self, sheet_ref: str, worksheet_name: Optional[str] = None) -> pd.DataFrame:
-        """Load company data from a Google Sheet URL or spreadsheet ID."""
+    def load_data_from_google_sheet(
+        self,
+        sheet_ref: str,
+        worksheet_name: Optional[str] = None,
+        data_kind: str = 'companies'
+    ) -> pd.DataFrame:
+        """Load company input or job output data from Google Sheets."""
         if not self._has_google_service_account_credentials():
             api_key = self._get_google_api_key()
             if api_key:
-                return self._load_data_from_google_sheets_api(sheet_ref, worksheet_name, api_key)
+                return self._load_data_from_google_sheets_api(
+                    sheet_ref, worksheet_name, api_key, data_kind
+                )
 
         worksheet = self._open_google_worksheet(sheet_ref, worksheet_name)
         values = worksheet.get_all_values()
 
-        return self._values_to_company_dataframe(values)
+        return self._values_to_dataframe(values, data_kind)
 
     def _load_data_from_google_sheets_api(
         self,
         sheet_ref: str,
         worksheet_name: Optional[str],
-        api_key: str
+        api_key: str,
+        data_kind: str = 'companies'
     ) -> pd.DataFrame:
         """Load Google Sheet values using API-key access for readable sheets."""
         spreadsheet_id, gid = self._parse_sheet_ref(sheet_ref)
@@ -92,12 +100,13 @@ class DataController:
         with urlopen(url, timeout=30) as response:
             payload = json.loads(response.read().decode('utf-8'))
 
-        return self._values_to_company_dataframe(payload.get('values', []))
+        return self._values_to_dataframe(payload.get('values', []), data_kind)
 
-    def _values_to_company_dataframe(self, values) -> pd.DataFrame:
-        """Convert raw worksheet values to normalized company input rows."""
+    def _values_to_dataframe(self, values, data_kind: str = 'companies') -> pd.DataFrame:
+        """Convert raw worksheet values to normalized company or job rows."""
         if not values:
-            return self.normalize_dataframe(pd.DataFrame())
+            empty = pd.DataFrame()
+            return self.normalize_jobs_dataframe(empty) if data_kind == 'jobs' else self.normalize_dataframe(empty)
 
         header = [column.strip() for column in values[0]]
         valid_indexes = [index for index, column in enumerate(header) if column]
@@ -109,6 +118,10 @@ class DataController:
         df = pd.DataFrame(rows, columns=header, dtype=str)
         df = df.replace('', pd.NA)
 
+        if data_kind == 'jobs':
+            return self.normalize_jobs_dataframe(df)
+        if data_kind != 'companies':
+            raise ValueError(f"Unsupported Google Sheets data kind: {data_kind}")
         return self.normalize_dataframe(df)
 
     def _get_first_sheet_title(self, spreadsheet_id: str, gid: Optional[str], api_key: str) -> str:

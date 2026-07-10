@@ -28,7 +28,7 @@ class DailyBerlinJobsServerTests(unittest.TestCase):
         })
 
         self.assertIn("--include-linkedin-daily", command)
-        self.assertIn("--skip-upload", command)
+        self.assertNotIn("--skip-upload", command)
         self.assertNotIn("--linkedin-raw-daily", command)
         self.assertEqual(command[command.index("--linkedin-limit-per-query") + 1], "7")
         self.assertEqual(command[command.index("--linkedin-keywords") + 1:], [

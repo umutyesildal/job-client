@@ -470,6 +470,35 @@ select:focus {
   grid-column: 1 / -1;
 }
 
+.run-progress {
+  display: grid;
+  gap: 8px;
+}
+
+.run-progress-copy {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.progress-track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(15, 118, 110, 0.12);
+}
+
+#progressFill {
+  display: block;
+  width: 0;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.35s ease;
+}
+
 .run-log {
   min-height: 90px;
   max-height: 220px;

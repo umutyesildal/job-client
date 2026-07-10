@@ -28,12 +28,12 @@ RUN_LOG_PATH = DATA_DIR / "daily_berlin_jobs_last_run.json"
 
 DEFAULT_SETTINGS = {
     "includeLinkedIn": True,
-    "profileFitOnly": True,
+    "profileFitOnly": False,
     "location": "Berlin, Germany",
     "limitPerQuery": 25,
     "postedWithinSeconds": 86400,
     "delay": 1.0,
-    "skipUpload": True,
+    "skipUpload": False,
     "keywords": [
         "software engineer",
         "software developer",
@@ -51,7 +51,9 @@ DEFAULT_SETTINGS = {
 }
 
 SOURCES = {
-    "all": DATA_DIR / "all_jobs.csv",
+    # Google Sheets is the UI source of truth. These files are refreshed only by
+    # pull_from_sheets.py after a successful upload/sync cycle.
+    "all": DATA_DIR / "published_all_jobs.csv",
     "daily": DATA_DIR / "daily_new_jobs.csv",
     "linkedin": DATA_DIR / "linkedin_daily_jobs.csv",
 }
@@ -360,8 +362,6 @@ def build_update_command(settings: dict) -> list[str]:
         python = sys.executable
 
     command = [python, str(SRC_DIR / "post_process_jobs.py"), "--no-update-baseline"]
-    if settings.get("skipUpload", True):
-        command.append("--skip-upload")
     if settings.get("includeLinkedIn", True):
         command.append("--include-linkedin-daily")
         command.extend(["--linkedin-location", str(settings["location"])])
@@ -385,9 +385,21 @@ class RunState:
         self.process_post = None
         self.stdout_log = []
         self.return_code = None
+        self.step = "idle"
+        self.step_label = "Ready"
+        self.progress = 0
         self.lock = threading.Lock()
 
 RUN_STATE = RunState()
+
+
+def set_run_progress(step: str, label: str, progress: int, log: str | None = None) -> None:
+    with RUN_STATE.lock:
+        RUN_STATE.step = step
+        RUN_STATE.step_label = label
+        RUN_STATE.progress = max(0, min(progress, 100))
+        if log:
+            RUN_STATE.stdout_log.append(log)
 
 def async_run_update():
     started_at = datetime.now().isoformat(timespec="seconds")
@@ -395,6 +407,9 @@ def async_run_update():
         RUN_STATE.running = True
         RUN_STATE.stdout_log = ["Starting daily update..."]
         RUN_STATE.return_code = None
+        RUN_STATE.step = "crawling"
+        RUN_STATE.step_label = "Collecting jobs"
+        RUN_STATE.progress = 5
         RUN_STATE.process_main = None
         RUN_STATE.process_linkedin = None
         RUN_STATE.process_post = None
@@ -428,7 +443,7 @@ def async_run_update():
         linkedin_cmd.extend(settings["keywords"])
 
     with RUN_STATE.lock:
-        RUN_STATE.stdout_log.append("Starting ATS Crawler and LinkedIn Scraper concurrently...")
+        RUN_STATE.stdout_log.append("Step 1/4 · Collecting ATS and LinkedIn jobs...")
 
     try:
         # Start both processes concurrently (in parallel!)
@@ -486,6 +501,8 @@ def async_run_update():
                 RUN_STATE.stdout_log.append(f"ATS Crawler failed with exit code {p_main.returncode}")
                 RUN_STATE.running = False
                 RUN_STATE.return_code = p_main.returncode
+                RUN_STATE.step = "failed"
+                RUN_STATE.step_label = "ATS crawl failed"
             return
 
         if p_linkedin.returncode != 0 and p_linkedin.returncode != -9:
@@ -493,6 +510,8 @@ def async_run_update():
                 RUN_STATE.stdout_log.append(f"LinkedIn Scraper failed with exit code {p_linkedin.returncode}")
                 RUN_STATE.running = False
                 RUN_STATE.return_code = p_linkedin.returncode
+                RUN_STATE.step = "failed"
+                RUN_STATE.step_label = "LinkedIn crawl failed"
             return
 
         # If it was manual kill, abort post processing
@@ -501,14 +520,16 @@ def async_run_update():
                 RUN_STATE.running = False
                 RUN_STATE.return_code = -9
                 RUN_STATE.stdout_log.append("Execution cancelled by user.")
+                RUN_STATE.step = "cancelled"
+                RUN_STATE.step_label = "Cancelled"
             return
 
         # Step 3: Run post_process_jobs.py to merge all_jobs.csv and the pre-scraped linkedin file
         post_cmd = build_update_command(settings)
         post_cmd.extend(["--linkedin-pre-scraped", str(DATA_DIR / "linkedin_daily_jobs.csv")])
         
-        with RUN_STATE.lock:
-            RUN_STATE.stdout_log.append("Starting Post Processing and Sheets Upload...")
+        set_run_progress("uploading", "Processing and writing Google Sheets", 60,
+                         "Step 2/4 · Processing results and writing Google Sheets...")
 
         p_post = subprocess.Popen(
             post_cmd,
@@ -529,6 +550,36 @@ def async_run_update():
         p_post.wait()
         t_post.join(timeout=2.0)
 
+        if p_post.returncode != 0:
+            with RUN_STATE.lock:
+                RUN_STATE.running = False
+                RUN_STATE.return_code = p_post.returncode
+                RUN_STATE.step = "failed"
+                RUN_STATE.step_label = "Google Sheets upload failed"
+                RUN_STATE.stdout_log.append(f"Update failed with code {p_post.returncode}")
+            return
+
+        set_run_progress("syncing", "Syncing canonical data from Google Sheets", 88,
+                         "Step 3/4 · Syncing canonical data back from Google Sheets...")
+        sync_result = run_sync_sheets()
+        for output in (sync_result.get("stdout"), sync_result.get("stderr")):
+            if output:
+                with RUN_STATE.lock:
+                    RUN_STATE.stdout_log.extend(
+                        f"[Sync] {line}" for line in str(output).splitlines() if line.strip()
+                    )
+        if sync_result["returnCode"] != 0:
+            with RUN_STATE.lock:
+                RUN_STATE.running = False
+                RUN_STATE.return_code = sync_result["returnCode"]
+                RUN_STATE.step = "failed"
+                RUN_STATE.step_label = "Google Sheets sync failed"
+                RUN_STATE.stdout_log.append("Sync failed; the UI kept the previous canonical snapshot.")
+            return
+
+        set_run_progress("refreshing", "Refreshing job list", 97,
+                         "Step 4/4 · Refreshing the UI data snapshot...")
+
         # Save run log JSON
         result = {
             "startedAt": started_at,
@@ -543,13 +594,18 @@ def async_run_update():
         with RUN_STATE.lock:
             RUN_STATE.running = False
             RUN_STATE.return_code = p_post.returncode
-            RUN_STATE.stdout_log.append(f"Update finished with code {p_post.returncode}")
+            RUN_STATE.step = "complete"
+            RUN_STATE.step_label = "Update complete"
+            RUN_STATE.progress = 100
+            RUN_STATE.stdout_log.append("Update complete. The latest Sheets data is ready.")
 
     except Exception as e:
         with RUN_STATE.lock:
             RUN_STATE.stdout_log.append(f"System Error during update: {e}")
             RUN_STATE.running = False
             RUN_STATE.return_code = 1
+            RUN_STATE.step = "failed"
+            RUN_STATE.step_label = "Update failed"
 
 
 def run_sync_sheets() -> dict:
@@ -602,6 +658,12 @@ class DailyBerlinJobsHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, directory=str(STATIC_DIR), **kwargs)
 
+    def end_headers(self):
+        # The app is local and changes frequently; stale HTML/JS pairs can refer
+        # to DOM controls that no longer exist.
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
     def do_GET(self):
         parsed = urlparse(self.path)
         if parsed.path == "/api/jobs":
@@ -628,7 +690,10 @@ class DailyBerlinJobsHandler(SimpleHTTPRequestHandler):
                 self.send_json({
                     "running": RUN_STATE.running,
                     "returnCode": RUN_STATE.return_code,
-                    "logs": "\n".join(RUN_STATE.stdout_log)
+                    "logs": "\n".join(RUN_STATE.stdout_log),
+                    "step": RUN_STATE.step,
+                    "stepLabel": RUN_STATE.step_label,
+                    "progress": RUN_STATE.progress,
                 })
             return
         if parsed.path == "/":
@@ -683,6 +748,8 @@ class DailyBerlinJobsHandler(SimpleHTTPRequestHandler):
                         RUN_STATE.stdout_log.append("Update manual cancellation requested by user. Killing subprocesses...")
                     RUN_STATE.running = False
                     RUN_STATE.return_code = -9
+                    RUN_STATE.step = "cancelled"
+                    RUN_STATE.step_label = "Cancelled"
                     self.send_json({"status": "stopped"})
                     return
                 self.send_json({"status": "not_running"})

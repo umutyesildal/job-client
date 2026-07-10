@@ -83,7 +83,6 @@ function fillSettings(settings) {
   if (!settings) return;
   state.settings = settings;
   $("#includeLinkedInInput").checked = true;
-  $("#skipUploadInput").checked = Boolean(settings.skipUpload);
   $("#limitInput").value = 25;
   $("#hoursInput").value = 24;
 }
@@ -229,8 +228,8 @@ function collectSettings() {
   return {
     ...current,
     includeLinkedIn: true,
-    profileFitOnly: true,
-    skipUpload: $("#skipUploadInput").checked,
+    profileFitOnly: false,
+    skipUpload: false,
     location: "Berlin, Germany",
     limitPerQuery: 25,
     postedWithinSeconds: 24 * 3600,
@@ -260,11 +259,23 @@ function resetRunButton() {
   button.classList.remove("secondary-action");
 }
 
+function renderRunProgress(status) {
+  const progress = Math.max(0, Math.min(Number(status.progress) || 0, 100));
+  const container = $("#runProgress");
+  container.hidden = false;
+  $("#runStep").textContent = status.stepLabel || "Working...";
+  $("#runPercent").textContent = `${progress}%`;
+  $("#progressFill").style.width = `${progress}%`;
+  const track = container.querySelector(".progress-track");
+  track.setAttribute("aria-valuenow", String(progress));
+}
+
 function startPollingStatus() {
   if (statusInterval) clearInterval(statusInterval);
   statusInterval = setInterval(async () => {
     try {
       const status = await api("/api/run/status");
+      renderRunProgress(status);
       const logArea = $("#runLog");
       logArea.textContent = status.logs || "";
       logArea.scrollTop = logArea.scrollHeight;
@@ -275,8 +286,11 @@ function startPollingStatus() {
         if (status.returnCode !== null) {
           $("#runLog").textContent += `\nFinished with code ${status.returnCode}`;
         }
-        await refreshSummary();
-        await loadJobs();
+        if (status.returnCode === 0) {
+          await Promise.all([refreshSummary(), loadJobs()]);
+        } else {
+          await refreshSummary();
+        }
       }
     } catch (error) {
       console.error("Error polling status", error);
@@ -304,6 +318,7 @@ async function runDailyUpdate() {
   state.running = true;
 
   $("#runLog").textContent = "Starting daily update...\n";
+  renderRunProgress({ progress: 0, stepLabel: "Starting daily update" });
   try {
     await saveSettings();
     await api("/api/run", { method: "POST", body: "{}" });
@@ -318,12 +333,14 @@ async function runSyncSheets() {
   const button = $("#syncBtn");
   button.disabled = true;
   $("#runLog").textContent = "Syncing Google Sheets...";
+  renderRunProgress({ progress: 25, stepLabel: "Syncing canonical data from Google Sheets" });
   try {
     const result = await api("/api/sync-sheets", { method: "POST", body: "{}" });
     const output = [result.stdout, result.stderr].filter(Boolean).join("\n");
     $("#runLog").textContent = output || `Finished with code ${result.returnCode}`;
-    await refreshSummary();
-    await loadJobs();
+    if (result.returnCode !== 0) throw new Error(output || `Sync exited with code ${result.returnCode}`);
+    renderRunProgress({ progress: 100, stepLabel: "Sheets sync complete" });
+    await Promise.all([refreshSummary(), loadJobs()]);
   } catch (error) {
     $("#runLog").textContent = `Sync failed: ${error.message}`;
   } finally {
@@ -407,6 +424,7 @@ async function init() {
     const status = await api("/api/run/status");
     if (status.running) {
       state.running = true;
+      renderRunProgress(status);
       const button = $("#runBtn");
       button.textContent = "Stop Update";
       button.classList.add("secondary-action");

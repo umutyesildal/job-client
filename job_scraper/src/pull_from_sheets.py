@@ -19,9 +19,9 @@ DEFAULT_SPREADSHEET = (
 def main():
     parser = argparse.ArgumentParser(description="Pull jobs from Google Sheets.")
     parser.add_argument("--spreadsheet", default=DEFAULT_SPREADSHEET, help="Google Sheet URL or ID")
-    parser.add_argument("--related-worksheet", default="Related Jobs", help="Related jobs worksheet name")
+    parser.add_argument("--all-worksheet", default="All Jobs", help="All jobs worksheet name")
     parser.add_argument("--daily-worksheet", default="Daily New Jobs", help="Daily new jobs worksheet name")
-    parser.add_argument("--related-output", default="data/related_jobs.csv", help="Local related jobs output path")
+    parser.add_argument("--all-output", default="data/published_all_jobs.csv", help="Local all jobs output path")
     parser.add_argument("--daily-output", default="data/daily_new_jobs.csv", help="Local daily new jobs output path")
     args = parser.parse_args()
 
@@ -29,34 +29,42 @@ def main():
     
     print(f"Opening spreadsheet: {args.spreadsheet}")
     
-    # Pull Related Jobs
-    print(f"Pulling '{args.related_worksheet}'...")
+    pulled = []
+
+    # Fetch both worksheets before replacing either local canonical snapshot.
+    print(f"Pulling '{args.all_worksheet}'...")
     try:
-        related_df = controller.load_data_from_google_sheet(args.spreadsheet, args.related_worksheet)
-        print(f"Loaded {len(related_df)} related jobs.")
+        all_df = controller.load_data_from_google_sheet(
+            args.spreadsheet, args.all_worksheet, data_kind="jobs"
+        )
+        print(f"Loaded {len(all_df)} all jobs.")
         
-        # Save to local CSV
-        output_path = Path(args.related_output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        # Drop columns containing all empty/NaN values if necessary
-        related_df.to_csv(output_path, index=False, encoding="utf-8")
-        print(f"Saved to {args.related_output}")
+        pulled.append((all_df, Path(args.all_output)))
     except Exception as e:
-        print(f"Error pulling related jobs: {e}")
+        print(f"Error pulling all jobs: {e}")
+        return 1
         
     # Pull Daily New Jobs
     print(f"Pulling '{args.daily_worksheet}'...")
     try:
-        daily_df = controller.load_data_from_google_sheet(args.spreadsheet, args.daily_worksheet)
+        daily_df = controller.load_data_from_google_sheet(
+            args.spreadsheet, args.daily_worksheet, data_kind="jobs"
+        )
         print(f"Loaded {len(daily_df)} daily new jobs.")
         
-        # Save to local CSV
-        output_path = Path(args.daily_output)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        daily_df.to_csv(output_path, index=False, encoding="utf-8")
-        print(f"Saved to {args.daily_output}")
+        pulled.append((daily_df, Path(args.daily_output)))
     except Exception as e:
         print(f"Error pulling daily new jobs: {e}")
+        return 1
+
+    for dataframe, output_path in pulled:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = output_path.with_suffix(output_path.suffix + ".tmp")
+        dataframe.to_csv(temporary_path, index=False, encoding="utf-8")
+        temporary_path.replace(output_path)
+        print(f"Saved to {output_path}")
+
+    return 0
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())
