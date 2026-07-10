@@ -47,5 +47,14 @@ data/*.xlsx
 data/*.txt
 *.csv
 *.json
+!web/package.json
+!web/package-lock.json
+!web/tsconfig.json
 
 *.env
+
+# Next.js
+node_modules/
+.next/
+.vercel/
+*.tsbuildinfo
