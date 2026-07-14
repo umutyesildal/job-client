@@ -77,7 +77,7 @@ jobs:
           assert required_columns.issubset(all_jobs.columns), "All Jobs is missing classification columns"
           assert required_columns.issubset(daily_jobs.columns), "New Today is missing classification columns"
           assert all_jobs["Role"].fillna("").str.strip().ne("").all(), "All Jobs contains an unclassified role"
-          assert all_jobs["Classification Version"].eq("engineering-v1").all(), "Unexpected classification version"
+          assert all_jobs["Classification Version"].eq("engineering-v2").all(), "Unexpected classification version"
           print(f"Verified All Jobs: {len(all_jobs)}")
           print(f"Verified New Today: {len(daily_jobs)}")
           PY

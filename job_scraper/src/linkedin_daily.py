@@ -1,4 +1,4 @@
-"""Daily LinkedIn query feed for Berlin software engineering roles."""
+"""Daily LinkedIn query feed for Berlin engineering roles."""
 
 from __future__ import annotations
 
@@ -24,17 +24,25 @@ logger = logging.getLogger(__name__)
 LINKEDIN_GUEST_SEARCH_URL = "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search"
 DEFAULT_LINKEDIN_KEYWORDS = [
     "software engineer",
-    "software developer",
     "backend engineer",
-    "backend developer",
     "frontend engineer",
-    "frontend developer",
     "fullstack engineer",
     "full stack engineer",
-    "fullstack developer",
-    "python developer",
-    "react developer",
-    "typescript developer",
+    "data engineer",
+    "machine learning engineer",
+    "AI engineer",
+    "platform engineer",
+    "devops engineer",
+    "site reliability engineer",
+    "cloud engineer",
+    "security engineer",
+    "mobile engineer",
+    "QA engineer",
+    "test automation engineer",
+    "embedded engineer",
+    "firmware engineer",
+    "robotics software engineer",
+    "engineering manager",
 ]
 
 
@@ -99,7 +107,7 @@ def collect_daily_linkedin_jobs(
     delay: float = 1.0,
     posted_within_seconds: int = 86400,
 ) -> pd.DataFrame:
-    """Collect recent LinkedIn jobs for a set of software engineering searches."""
+    """Collect recent LinkedIn jobs for broad and discipline-specific engineering searches."""
     keyword_list = [keyword.strip() for keyword in (keywords or DEFAULT_LINKEDIN_KEYWORDS) if keyword.strip()]
     if not keyword_list:
         return DataController().normalize_jobs_dataframe(pd.DataFrame())

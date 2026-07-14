@@ -3,8 +3,8 @@
 ## Decisions
 
 - Product name: **Daily Berlin Jobs**.
-- Current scope: Berlin engineering jobs only.
-- LinkedIn queries: unchanged and engineering-focused.
+- Current scope: Berlin tech-engineering jobs only; physical engineering disciplines are excluded.
+- LinkedIn queries: Engineer-based searches across the included tech disciplines; generic Developer and unbounded Engineer searches are excluded.
 - Classification: performed for each incoming job during publishing, not by a
   one-off raw-file analysis step.
 - Source of truth: normalized Google Sheets rows produced by Python.
@@ -27,8 +27,8 @@
 
 ## Guardrails
 
-- Do not broaden beyond engineering in this refactor.
-- Do not change the default LinkedIn query list.
+- Do not broaden into mechanical, electrical, civil, manufacturing, energy, or field/service engineering.
+- Keep LinkedIn queries aligned with the included tech-engineering areas.
 - Do not expose personal-fit data in the public UI.
 - Do not run the crawler inside Vercel.
 - Do not treat a workflow as successful when classification columns are absent.
@@ -36,12 +36,16 @@
 ## Local validation record
 
 - The full dry-run processed 57,262 incoming rows without uploading data.
-- The tightened `engineering-v1` rules published 458 Berlin engineering rows.
-- All 458 published rows had a non-empty role and the expected classification
-  version.
+- The initial `engineering-v1` rules published 458 Berlin tech-engineering rows.
+- The final `engineering-v2` dry-run processed 57,262 incoming rows and
+  published 467 tech-engineering rows.
+- `engineering-v2` added 11 embedded/firmware/robotics rows while publishing
+  zero mechanical, electrical, civil, manufacturing, or field/service rows.
+- All 467 `engineering-v2` rows had a non-empty role and the expected
+  classification version.
 - Sample review caught and removed two false positives: a founder-associate
   title mentioning a CTO office and a content role mentioning frontend.
-- Python: 18 unit tests passed.
+- Python: 21 unit tests passed.
 - Next.js: typecheck and production build passed.
 - Desktop and 390 px mobile layouts were inspected; the mobile page had no
   horizontal overflow and the filters collapsed correctly.
@@ -49,6 +53,6 @@
   locale/runtime-dependent text and date sorting. The public list now uses
   deterministic text comparison and explicit date parsing.
 
-The currently published worksheets predate `engineering-v1`. Run the branch
-workflow once before promoting the matching web build so filter options are
-populated from normalized Sheets columns.
+The currently published worksheets predate the versioned taxonomy. Run the
+branch workflow once before promoting the matching `engineering-v2` web build
+so filter options are populated from normalized Sheets columns.

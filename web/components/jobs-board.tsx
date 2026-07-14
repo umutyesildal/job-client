@@ -102,7 +102,7 @@ export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
       <section className="hero">
         <span className="eyebrow">Updated daily from Google Sheets</span>
         <h1>Engineering jobs in Berlin,<br />without the noise.</h1>
-        <p>Software, data, platform and security roles from company career pages and LinkedIn.</p>
+        <p>Software, data, platform, security and embedded engineering roles in one place.</p>
       </section>
 
       <section className="controls">

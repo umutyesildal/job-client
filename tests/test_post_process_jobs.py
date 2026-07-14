@@ -120,7 +120,7 @@ class PublishedJobsTests(unittest.TestCase):
         self.assertEqual(result.iloc[0]["Level"], "Junior / Entry")
         self.assertEqual(result.iloc[0]["Work Mode"], "Remote")
         self.assertEqual(result.iloc[0]["Tech Stack"], "Python, Docker")
-        self.assertEqual(result.iloc[0]["Classification Version"], "engineering-v1")
+        self.assertEqual(result.iloc[0]["Classification Version"], "engineering-v2")
 
     def test_public_collection_stays_engineering_only(self):
         rows = [{
@@ -139,6 +139,24 @@ class PublishedJobsTests(unittest.TestCase):
 
         self.assertEqual(result["Job Link"].tolist(), ["https://example.com/engineering"])
         self.assertEqual(result.iloc[0]["Role"], "Engineering Leadership")
+
+    def test_public_collection_includes_embedded_but_not_physical_engineering(self):
+        rows = [{
+            "Company Name": "Robotics Co",
+            "Job Title": "Embedded Firmware Engineer",
+            "Location": "Berlin",
+            "Job Link": "https://example.com/embedded",
+        }, {
+            "Company Name": "Factory Co",
+            "Job Title": "Manufacturing Engineer",
+            "Location": "Berlin",
+            "Job Link": "https://example.com/manufacturing",
+        }]
+
+        result = filter_published_jobs(pd.DataFrame(rows))
+
+        self.assertEqual(result["Job Link"].tolist(), ["https://example.com/embedded"])
+        self.assertEqual(result.iloc[0]["Role"], "Embedded / Firmware / Robotics")
 
     def test_new_today_only_includes_today_and_yesterday_with_dates(self):
         rows = [{"Posted Date": "2026-07-10", "Job Title": "Today"},

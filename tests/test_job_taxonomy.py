@@ -34,9 +34,25 @@ class JobTaxonomyTests(unittest.TestCase):
     def test_keeps_scope_engineering_only(self):
         self.assertEqual(classify_role({"Job Title": "Technical Product Manager"}), "")
         self.assertEqual(classify_role({"Job Title": "Sales Engineer"}), "")
+        self.assertEqual(classify_role({"Job Title": "Technical Support Engineer"}), "")
         self.assertEqual(classify_role({"Job Title": "Mechanical Engineer"}), "")
+        self.assertEqual(classify_role({"Job Title": "Electrical Engineer"}), "")
+        self.assertEqual(classify_role({"Job Title": "Civil Engineer"}), "")
         self.assertEqual(classify_role({"Job Title": "Founder's Associate (CTO Office)"}), "")
         self.assertEqual(classify_role({"Job Title": "Working Student Content und Frontend Plattformen"}), "")
+
+    def test_classifies_engineering_beyond_software(self):
+        examples = {
+            "Embedded Firmware Engineer": "Embedded / Firmware / Robotics",
+            "Robotics Software Engineer": "Embedded / Firmware / Robotics",
+            "Machine Learning Engineer": "Data / AI / ML",
+            "Cloud Engineer": "Platform / DevOps / SRE",
+            "Security Engineer": "Security",
+        }
+
+        for title, expected in examples.items():
+            with self.subTest(title=title):
+                self.assertEqual(classify_role({"Job Title": title}), expected)
 
     def test_classifies_engineering_leadership(self):
         result = classify_job({"Job Title": "Director of Engineering", "Location": "Berlin"})

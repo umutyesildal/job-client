@@ -2,9 +2,14 @@
 
 ## Product boundary
 
-Daily Berlin Jobs currently publishes Berlin engineering roles only. The brand
-name is intentionally broader than the initial taxonomy, but scope expansion is
-deferred. LinkedIn queries remain engineering-focused.
+Daily Berlin Jobs currently publishes Berlin tech-engineering roles only. The
+scope includes software, data/AI, platform/cloud, security, mobile, QA, and
+embedded/firmware/robotics engineering. Mechanical, electrical, civil,
+manufacturing, energy, and field/service disciplines remain excluded.
+
+LinkedIn discovery uses explicit Engineer searches for the included areas. It
+does not use a generic `engineer` query because that would spend the daily query
+budget on disciplines outside the product boundary.
 
 ## Data flow
 
@@ -33,7 +38,7 @@ In addition to the source job columns, every public row contains:
 | `Work Mode` | `Remote`, `Hybrid`, or `On-site` |
 | `Tech Stack` | Comma-separated technologies derived from job text |
 | `Keywords` | Search terms derived from role, department, and technologies |
-| `Classification Version` | Rule version; currently `engineering-v1` |
+| `Classification Version` | Rule version; currently `engineering-v2` |
 
 The Python pipeline is the only classification authority. The Next.js app may
 parse these values but must not recreate taxonomy regexes.

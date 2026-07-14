@@ -386,9 +386,9 @@ def main() -> int:
     parser.add_argument("--skip-upload", action="store_true", help="Only write local CSV files")
     parser.add_argument("--skip-daily-upload", action="store_true", help="Do not update the daily-new worksheet")
     parser.add_argument("--include-linkedin-daily", action="store_true",
-                        help="Append recent LinkedIn software engineering searches before filtering/uploading")
+                        help="Append recent LinkedIn engineering searches before filtering/uploading")
     parser.add_argument("--linkedin-keywords", nargs="*",
-                        help="LinkedIn query keywords; defaults to software/backend/frontend/fullstack variants")
+                        help="LinkedIn query keywords; defaults to the supported tech-engineering areas")
     parser.add_argument("--linkedin-location", default="Berlin, Germany", help="LinkedIn query location")
     parser.add_argument("--linkedin-limit-per-query", type=int, default=25,
                         help="Maximum LinkedIn jobs to fetch per keyword")

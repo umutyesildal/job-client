@@ -3,9 +3,11 @@
 Daily Berlin Jobs is a consumer-facing Berlin engineering job board backed by
 the existing Python crawler and Google Sheets publishing pipeline.
 
-The current product scope is intentionally engineering-only. LinkedIn queries
-remain focused on software engineering; the taxonomy is versioned so the scope
-can be expanded later without changing the public data contract.
+The current product scope is intentionally tech-engineering only. LinkedIn
+queries cover software, data/AI, platform/cloud, security, mobile, QA, and
+embedded/firmware/robotics engineering. Physical disciplines such as mechanical,
+electrical, civil, manufacturing, energy, and field/service engineering remain
+out of scope. The taxonomy is versioned so this boundary can change safely.
 
 The public product is a Next.js app hosted on Vercel. Google Sheets is the
 canonical data store for the website. The long-running Python
@@ -65,7 +67,7 @@ The configured spreadsheet currently uses these worksheets:
 | `Related Jobs` | Legacy/internal profile-fit output; not a public UI source |
 
 Public rows carry `Role`, `Level`, `Work Mode`, `Tech Stack`, `Keywords`, and
-`Classification Version`. The current version is `engineering-v1`. The
+`Classification Version`. The current version is `engineering-v2`. The
 canonical rules live in `job_scraper/src/job_taxonomy.py`.
 
 The Next.js application should read `All Jobs` and `Daily New Jobs` directly on
@@ -213,15 +215,16 @@ Pull canonical published data from Sheets:
 ## Classification and consumer filters
 
 Every incoming ATS or LinkedIn row is analyzed during `post_process_jobs.py`.
-Only Berlin engineering jobs enter `All Jobs` and `Daily New Jobs`; normalized
-classification fields are written with the row. LinkedIn search keywords remain
-engineering-only for this refactor.
+Only Berlin tech-engineering jobs enter `All Jobs` and `Daily New Jobs`;
+normalized classification fields are written with the row. LinkedIn discovery
+uses discipline-specific Engineer searches rather than generic Developer or
+unbounded Engineer searches.
 
 - **Level:** Intern / Working Student, Junior / Entry, Senior, Staff /
   Principal, Lead, Manager / Head / Director
 - **Engineering area:** Software Engineering, Backend, Frontend, Fullstack,
   Data / AI / ML, Platform / DevOps / SRE, Security, Mobile, QA / Test,
-  Engineering Leadership
+  Embedded / Firmware / Robotics, Engineering Leadership
 - **Work mode:** Remote, Hybrid, On-site
 
 Audit the classified output before or after a Sheets sync:
@@ -229,6 +232,12 @@ Audit the classified output before or after a Sheets sync:
 ```bash
 .venv/bin/python scripts/audit_published_jobs.py
 ```
+
+The default LinkedIn discovery set now uses Engineer searches for software,
+backend, frontend, fullstack, data, ML/AI, platform, DevOps/SRE/cloud, security,
+mobile, QA/test automation, embedded/firmware/robotics, and engineering
+leadership. It intentionally omits generic `engineer`, Developer-only, and
+physical-engineering searches.
 
 ## Tests
 
@@ -266,7 +275,7 @@ openssl rand -base64 48
 ## Remaining deployment and retirement work
 
 1. Configure the GitHub Actions repository secrets.
-2. Run the daily workflow once so Sheets receives `engineering-v1` fields.
+2. Run the daily workflow once so Sheets receives `engineering-v2` fields.
 3. Validate a Vercel Preview against the classified worksheets.
 4. Validate a manual `/admin` run and the workflow status UI.
 5. Promote to Production and retire the local HTTP UI after parity is confirmed.

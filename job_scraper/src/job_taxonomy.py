@@ -11,12 +11,14 @@ import re
 from collections.abc import Mapping
 
 
-CLASSIFICATION_VERSION = "engineering-v1"
+CLASSIFICATION_VERSION = "engineering-v2"
 
 ENGINEERING_EXCLUDE_PATTERN = re.compile(
     r"\b(?:sales engineer|solutions? engineer|customer success|support engineer|field engineer|"
-    r"mechanical engineer|electrical engineer|civil engineer|process engineer|"
-    r"manufacturing engineer|account executive|recruiter|talent acquisition|marketing|"
+    r"mechanical engineer|electrical engineer|electronics engineer|civil engineer|process engineer|"
+    r"manufacturing engineer|industrial engineer|production engineer|environmental engineer|"
+    r"energy engineer|service engineer|commissioning engineer|maintenance engineer|"
+    r"account executive|recruiter|talent acquisition|marketing|"
     r"partnerships?|finance|product manager|product owner)\b",
     re.IGNORECASE,
 )
@@ -80,7 +82,15 @@ ROLE_RULES: list[tuple[str, re.Pattern[str]]] = [
     (
         "QA / Test",
         re.compile(
-            r"\b(?:qa engineer|quality assurance engineer|test automation|sdet|engineer in test)\b",
+            r"\b(?:qa engineer|quality engineer|quality assurance engineer|test automation|sdet|engineer in test)\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "Embedded / Firmware / Robotics",
+        re.compile(
+            r"\b(?:embedded(?: software)? engineer|firmware (?:engineer|developer)|"
+            r"robotics(?: software)? engineer|autonomous systems engineer|controls software engineer)\b",
             re.IGNORECASE,
         ),
     ),
@@ -88,7 +98,7 @@ ROLE_RULES: list[tuple[str, re.Pattern[str]]] = [
         "Engineering Leadership",
         re.compile(
             r"(?:\b(?:engineering manager|head of engineering|director of engineering|"
-            r"vp engineering|chief technology officer)\b|^(?:group )?cto(?:\s|$))",
+            r"vp engineering|chief technology officer|engineering lead)\b|^(?:group )?cto(?:\s|$))",
             re.IGNORECASE,
         ),
     ),
@@ -96,7 +106,7 @@ ROLE_RULES: list[tuple[str, re.Pattern[str]]] = [
         "Software Engineering",
         re.compile(
             r"\b(?:software engineer|software developer|product engineer|development engineer|"
-            r"deployment engineer|deployments engineer|solutions architect)\b",
+            r"deployment engineer|deployments engineer|software architect|solutions architect)\b",
             re.IGNORECASE,
         ),
     ),
