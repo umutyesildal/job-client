@@ -49,6 +49,16 @@ A future expansion must create a new classification version, add tests for the
 new include/exclude boundary, update query inputs deliberately, and validate a
 manual workflow run before the public filters are changed.
 
+## Company catalog contributions
+
+Community company suggestions are intake records, not production crawler
+configuration. They must pass duplicate, URL, ATS, Berlin-scope, and scraper
+checks before a maintainer promotes them into `OneSingle`. The public client
+must never receive Sheets write credentials or write directly to the active
+company list.
+
+See `docs/COMPANY_CATALOG.md` for the proposed record and delivery phases.
+
 ## Legacy boundary
 
 `daily_berlin_jobs/` is the previous local stdlib UI. It remains only until

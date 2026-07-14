@@ -294,6 +294,10 @@ openssl rand -base64 48
 - Report vulnerabilities through the private process in
   [`SECURITY.md`](SECURITY.md).
 - See the [`community roadmap`](docs/ROADMAP.md) for contribution ideas.
+- Suggest a Berlin employer through the structured
+  [company suggestion form](https://github.com/umutyesildal/job-client/issues/new?template=company_suggestion.yml).
+- Read the [company and ATS catalog design](docs/COMPANY_CATALOG.md) before
+  changing source-list or moderation behavior.
 - All contributions are released under the [`MIT License`](LICENSE).
 
 Issues and focused pull requests are welcome. Production Sheets access is not

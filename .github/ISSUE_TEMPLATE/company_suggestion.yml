@@ -1,0 +1,82 @@
+name: Suggest a company
+description: Propose a Berlin tech employer for the public crawler catalog
+title: "[Company]: "
+labels: ["company-suggestion", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for expanding the catalog. Suggestions are reviewed before they can reach the production crawler. Do not include private contacts, credentials, or personal data.
+  - type: input
+    id: company
+    attributes:
+      label: Company name
+      placeholder: Example GmbH
+    validations:
+      required: true
+  - type: input
+    id: website
+    attributes:
+      label: Company website
+      placeholder: https://example.com
+    validations:
+      required: true
+  - type: input
+    id: careers
+    attributes:
+      label: Careers page
+      description: Link to the company's own careers page or ATS board.
+      placeholder: https://jobs.example.com
+    validations:
+      required: true
+  - type: dropdown
+    id: ats
+    attributes:
+      label: ATS platform
+      description: Select the platform when known. Maintainers will verify it.
+      options:
+        - Unknown / needs detection
+        - Amazon Jobs
+        - Ashby
+        - BambooHR
+        - Eightfold
+        - Gem
+        - Getro
+        - Greenhouse
+        - HiBob
+        - JOIN
+        - Lever
+        - Microsoft Careers
+        - Personio
+        - Recruitee
+        - Rippling
+        - SmartRecruiters
+        - Stripe Jobs
+        - Workable
+        - Other / company-specific
+    validations:
+      required: true
+  - type: input
+    id: berlin_evidence
+    attributes:
+      label: Berlin role evidence
+      description: Link to a current Berlin tech-engineering role or a Berlin office/careers filter.
+      placeholder: https://jobs.example.com/berlin-engineer
+    validations:
+      required: true
+  - type: textarea
+    id: notes
+    attributes:
+      label: Notes
+      description: Anything that helps verify the company, ATS, or Berlin scope.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Submission checks
+      options:
+        - label: This is a company careers source, not a recruiter advertisement or personal job post.
+          required: true
+        - label: The company appears to hire tech-engineering roles in Berlin.
+          required: true
+        - label: I removed credentials, private contacts, and personal data.
+          required: true
