@@ -1,5 +1,6 @@
 import { JWT } from "google-auth-library";
 import type { Job, JobsSnapshot } from "./jobs";
+import { getSampleJobsSnapshot } from "./sample-data";
 
 type ServiceAccount = {
   client_email: string;
@@ -74,6 +75,10 @@ function toJob(row: Record<string, string>): Job {
 }
 
 export async function getJobsSnapshot(): Promise<JobsSnapshot> {
+  if (process.env.USE_SAMPLE_DATA?.trim().toLowerCase() === "true") {
+    return getSampleJobsSnapshot();
+  }
+
   const [allRows, dailyRows] = await Promise.all([
     sheetRows("All Jobs"),
     sheetRows("Daily New Jobs"),

@@ -1,5 +1,12 @@
 # Daily Berlin Jobs
 
+[![CI](https://github.com/umutyesildal/job-client/actions/workflows/ci.yml/badge.svg)](https://github.com/umutyesildal/job-client/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+Daily Berlin Jobs is an open-source public-interest project. Fork it, run it
+with sample data, adapt it for your community, and help improve the shared
+crawler and job-search experience.
+
 Daily Berlin Jobs is a consumer-facing Berlin engineering job board backed by
 the existing Python crawler and Google Sheets publishing pipeline.
 
@@ -102,6 +109,10 @@ Copy the example for local development:
 ```bash
 cp .env.example web/.env.local
 ```
+
+The example enables `USE_SAMPLE_DATA=true`, so the public board runs without
+Google or GitHub credentials. Set it to `false` only when connecting your own
+spreadsheet. Production credentials are never shared with contributors.
 
 Never commit `.env`, `.env.local`, service-account JSON, private keys, session
 secrets, or GitHub tokens. Do not prefix secrets with `NEXT_PUBLIC_`; that prefix
@@ -256,6 +267,10 @@ npm install
 npm run dev
 ```
 
+The default sample mode renders a small representative tech-engineering dataset
+and supports search, filtering, sorting, and pagination without external
+services.
+
 Configure Vercel with `web` as the project root directory. The public page reads
 `All Jobs` and `Daily New Jobs` from Sheets on the server. `/admin` uses an
 HTTP-only signed session and triggers `.github/workflows/daily-update.yml`.
@@ -272,13 +287,27 @@ Store the output as `ADMIN_PASSWORD_HASH`. Generate `SESSION_SECRET` with:
 openssl rand -base64 48
 ```
 
+## Open-source community
+
+- Start with [`CONTRIBUTING.md`](CONTRIBUTING.md).
+- Read the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) before participating.
+- Report vulnerabilities through the private process in
+  [`SECURITY.md`](SECURITY.md).
+- See the [`community roadmap`](docs/ROADMAP.md) for contribution ideas.
+- All contributions are released under the [`MIT License`](LICENSE).
+
+Issues and focused pull requests are welcome. Production Sheets access is not
+required and is never granted for ordinary development; use sample mode or your
+own data source.
+
 ## Remaining deployment and retirement work
 
-1. Configure the GitHub Actions repository secrets.
-2. Run the daily workflow once so Sheets receives `engineering-v2` fields.
-3. Validate a Vercel Preview against the classified worksheets.
-4. Validate a manual `/admin` run and the workflow status UI.
-5. Promote to Production and retire the local HTTP UI after parity is confirmed.
+The `engineering-v2` live publisher and Vercel Preview parity checks completed
+on July 14, 2026. Remaining work:
+
+1. Validate a manual `/admin` run and the workflow status UI.
+2. Promote to Production after final review.
+3. Retire the local HTTP UI after admin parity is confirmed.
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the data contract and
 [`docs/REFACTOR.md`](docs/REFACTOR.md) for the decisions and rollout sequence.

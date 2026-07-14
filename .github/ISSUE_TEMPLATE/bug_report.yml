@@ -1,0 +1,47 @@
+name: Bug report
+description: Report a reproducible problem in the board, crawler, or documentation
+title: "[Bug]: "
+labels: ["bug", "needs-triage"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve Daily Berlin Jobs. Never include credentials or private data.
+  - type: dropdown
+    id: component
+    attributes:
+      label: Component
+      options:
+        - Public web board
+        - Python crawler
+        - Classification or filters
+        - GitHub Actions
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Include the expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: Reproduction steps
+      placeholder: "1. Start with sample data\n2. Open...\n3. Observe..."
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, browser, Python or Node version, and relevant commit.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: I removed credentials, tokens, private URLs, and personal data.
+          required: true
