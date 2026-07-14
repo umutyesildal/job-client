@@ -1,0 +1,32 @@
+name: Feature request
+description: Propose a focused improvement to the public project
+title: "[Feature]: "
+labels: ["enhancement", "needs-triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Who benefits, and what is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Keep the scan-first UI and tech-engineering scope in mind.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+  - type: checkboxes
+    id: scope
+    attributes:
+      label: Project fit
+      options:
+        - label: This does not require exposing production credentials or personal data.
+          required: true
+        - label: I reviewed the architecture and contribution guidelines.
+          required: true

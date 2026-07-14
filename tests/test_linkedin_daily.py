@@ -8,10 +8,20 @@ from urllib.parse import parse_qs, urlparse
 SRC_DIR = Path(__file__).resolve().parents[1] / "job_scraper" / "src"
 sys.path.insert(0, str(SRC_DIR))
 
-from linkedin_daily import build_linkedin_search_url, collect_daily_linkedin_jobs  # noqa: E402
+from linkedin_daily import DEFAULT_LINKEDIN_KEYWORDS, build_linkedin_search_url, collect_daily_linkedin_jobs  # noqa: E402
 
 
 class LinkedInDailyTests(unittest.TestCase):
+    def test_default_queries_cover_supported_tech_engineering_areas(self):
+        self.assertIn("software engineer", DEFAULT_LINKEDIN_KEYWORDS)
+        self.assertIn("machine learning engineer", DEFAULT_LINKEDIN_KEYWORDS)
+        self.assertIn("site reliability engineer", DEFAULT_LINKEDIN_KEYWORDS)
+        self.assertIn("embedded engineer", DEFAULT_LINKEDIN_KEYWORDS)
+        self.assertIn("robotics software engineer", DEFAULT_LINKEDIN_KEYWORDS)
+        self.assertNotIn("engineer", DEFAULT_LINKEDIN_KEYWORDS)
+        self.assertNotIn("mechanical engineer", DEFAULT_LINKEDIN_KEYWORDS)
+        self.assertNotIn("software developer", DEFAULT_LINKEDIN_KEYWORDS)
+
     def test_build_url_uses_last_24_hour_filter(self):
         url = build_linkedin_search_url("software engineer", "Berlin, Germany")
         params = parse_qs(urlparse(url).query)
