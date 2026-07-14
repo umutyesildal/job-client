@@ -70,7 +70,14 @@ jobs:
 
           all_jobs = pd.read_csv("data/published_all_jobs.csv", low_memory=False)
           daily_jobs = pd.read_csv("data/daily_new_jobs.csv", low_memory=False)
+          required_columns = {
+              "Role", "Level", "Work Mode", "Tech Stack", "Keywords", "Classification Version"
+          }
           assert len(all_jobs) > 0, "All Jobs is empty after publish"
+          assert required_columns.issubset(all_jobs.columns), "All Jobs is missing classification columns"
+          assert required_columns.issubset(daily_jobs.columns), "New Today is missing classification columns"
+          assert all_jobs["Role"].fillna("").str.strip().ne("").all(), "All Jobs contains an unclassified role"
+          assert all_jobs["Classification Version"].eq("engineering-v1").all(), "Unexpected classification version"
           print(f"Verified All Jobs: {len(all_jobs)}")
           print(f"Verified New Today: {len(daily_jobs)}")
           PY

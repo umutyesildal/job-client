@@ -11,6 +11,7 @@ SRC_DIR = Path(__file__).resolve().parents[1] / "job_scraper" / "src"
 sys.path.insert(0, str(SRC_DIR))
 
 from post_process_jobs import (  # noqa: E402
+    classify_jobs,
     filter_published_jobs,
     filter_recent_published_jobs,
     find_daily_new_jobs,
@@ -103,6 +104,41 @@ class PublishedJobsTests(unittest.TestCase):
         result = filter_published_jobs(pd.DataFrame(rows))
 
         self.assertEqual(result["Job Link"].tolist(), ["https://example.com/software"])
+
+    def test_every_incoming_job_is_classified_before_publishing(self):
+        rows = [{
+            "Company Name": "Example",
+            "Job Title": "Junior Backend Engineer",
+            "Location": "Berlin, Germany",
+            "Job Description": "Python and Docker",
+            "Remote": "Yes",
+        }]
+
+        result = classify_jobs(pd.DataFrame(rows))
+
+        self.assertEqual(result.iloc[0]["Role"], "Backend")
+        self.assertEqual(result.iloc[0]["Level"], "Junior / Entry")
+        self.assertEqual(result.iloc[0]["Work Mode"], "Remote")
+        self.assertEqual(result.iloc[0]["Tech Stack"], "Python, Docker")
+        self.assertEqual(result.iloc[0]["Classification Version"], "engineering-v1")
+
+    def test_public_collection_stays_engineering_only(self):
+        rows = [{
+            "Company Name": "Example",
+            "Job Title": "Technical Product Manager",
+            "Location": "Berlin",
+            "Job Link": "https://example.com/product",
+        }, {
+            "Company Name": "Example",
+            "Job Title": "Engineering Manager",
+            "Location": "Berlin",
+            "Job Link": "https://example.com/engineering",
+        }]
+
+        result = filter_published_jobs(pd.DataFrame(rows))
+
+        self.assertEqual(result["Job Link"].tolist(), ["https://example.com/engineering"])
+        self.assertEqual(result.iloc[0]["Role"], "Engineering Leadership")
 
     def test_new_today_only_includes_today_and_yesterday_with_dates(self):
         rows = [{"Posted Date": "2026-07-10", "Job Title": "Today"},

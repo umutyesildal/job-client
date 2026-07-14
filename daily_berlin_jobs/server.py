@@ -1,4 +1,4 @@
-"""Local web app for Daily Berlin Software Jobs."""
+"""Legacy local web app for Daily Berlin Jobs."""
 
 from __future__ import annotations
 
@@ -67,7 +67,6 @@ ROLE_FILTERS = [
     ("security", re.compile(r"\b(security|application security|appsec|iam|soc)\b", re.IGNORECASE)),
     ("mobile", re.compile(r"\b(android|ios|mobile|react native|flutter)\b", re.IGNORECASE)),
     ("qa", re.compile(r"\b(qa|quality assurance|test automation|sdet|engineer in test)\b", re.IGNORECASE)),
-    ("product", re.compile(r"\b(product manager|product owner|technical product manager)\b", re.IGNORECASE)),
 ]
 
 LEVEL_FILTERS = [
@@ -782,17 +781,17 @@ class DailyBerlinJobsHandler(SimpleHTTPRequestHandler):
 def main() -> int:
     import argparse
 
-    parser = argparse.ArgumentParser(description="Daily Berlin Software Jobs web app")
+    parser = argparse.ArgumentParser(description="Legacy Daily Berlin Jobs web app")
     parser.add_argument("--host", default="127.0.0.1")
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
 
     server = ThreadingHTTPServer((args.host, args.port), DailyBerlinJobsHandler)
-    print(f"Daily Berlin Software Jobs running at http://{args.host}:{args.port}")
+    print(f"Daily Berlin Jobs legacy app running at http://{args.host}:{args.port}")
     try:
         server.serve_forever()
     except KeyboardInterrupt:
-        print("\nStopping Daily Berlin Software Jobs")
+        print("\nStopping Daily Berlin Jobs legacy app")
     finally:
         server.server_close()
     return 0

@@ -1,9 +1,8 @@
 """
 Post-process collected jobs for Google Sheets outputs.
 
-Creates:
-- Related Jobs: Berlin roles scored against Umut's early-career software profile
-- Daily New Jobs: jobs present in current all_jobs.csv but absent from a previous pull
+Creates the canonical Daily Berlin Jobs datasets. Every incoming row is
+classified before the engineering-only public collections are written.
 """
 
 import argparse
@@ -17,6 +16,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 
 from data_controller import DataController
+from job_taxonomy import classify_job
 from linkedin_daily import collect_daily_linkedin_jobs, save_linkedin_daily_jobs
 
 
@@ -100,29 +100,21 @@ NON_BERLIN_LOCATION_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-PUBLISHED_SOFTWARE_TITLE_PATTERN = re.compile(
-    r"\b(?:software|backend|back[- ]?end|frontend|front[- ]?end|full[- ]?stack|developer|"
-    r"development engineer|devops|sre|site reliability|platform engineer|cloud engineer|"
-    r"infrastructure engineer|data engineer|data scientist|machine learning|ml engineer|"
-    r"ai engineer|security engineer|application security|mobile engineer|android|ios engineer|"
-    r"qa engineer|test automation|sdet|product engineer|technical product manager|"
-    r"solutions architect|deployment engineer|deployments engineer)\b",
-    re.IGNORECASE,
-)
-
-PUBLISHED_TITLE_EXCLUDE_PATTERN = re.compile(
-    r"\b(?:sales engineer|customer success|support engineer|field engineer|mechanical engineer|"
-    r"electrical engineer|civil engineer|process engineer|manufacturing engineer|account executive|"
-    r"recruiter|talent acquisition|marketing|partnerships?|finance)\b",
-    re.IGNORECASE,
-)
-
 EMPTY_JOB_VALUES = {"", "unknown", "n/a", "na", "none", "null", "-"}
 
 
 def load_jobs(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path, low_memory=False, dtype=str).fillna("")
     return DataController().normalize_jobs_dataframe(df)
+
+
+def classify_jobs(df: pd.DataFrame) -> pd.DataFrame:
+    """Analyze every incoming job and attach the canonical Sheets fields."""
+    classified = DataController().normalize_jobs_dataframe(df.fillna(""))
+    classification_rows = [classify_job(row) for row in classified.to_dict(orient="records")]
+    for column in ["Role", "Level", "Work Mode", "Tech Stack", "Keywords", "Classification Version"]:
+        classified[column] = [row[column] for row in classification_rows]
+    return DataController().normalize_jobs_dataframe(classified)
 
 
 def _row_text(row: pd.Series, columns) -> str:
@@ -216,16 +208,16 @@ def filter_related_jobs(df: pd.DataFrame) -> pd.DataFrame:
 
 
 def filter_published_jobs(df: pd.DataFrame) -> pd.DataFrame:
-    """Build the cumulative, consumer-facing Berlin software jobs collection."""
-    normalized = DataController().normalize_jobs_dataframe(df.fillna(""))
+    """Build the cumulative, consumer-facing Berlin engineering collection."""
+    normalized = classify_jobs(df)
     title = normalized["Job Title"].astype(str).str.strip()
     company = normalized["Company Name"].astype(str).str.strip()
     location = normalized["Location"].astype(str).str.strip()
+    role = normalized["Role"].astype(str).str.strip()
 
     valid = (
         location.str.contains(r"\bberlin\b", case=False, regex=True, na=False)
-        & title.str.contains(PUBLISHED_SOFTWARE_TITLE_PATTERN, na=False)
-        & ~title.str.contains(PUBLISHED_TITLE_EXCLUDE_PATTERN, na=False)
+        & role.ne("")
         & ~title.str.casefold().isin(EMPTY_JOB_VALUES)
         & ~company.str.casefold().isin(EMPTY_JOB_VALUES)
         & ~location.str.casefold().isin(EMPTY_JOB_VALUES)
@@ -375,7 +367,7 @@ def main() -> int:
                         help="Previous pulled jobs baseline path")
     parser.add_argument("--related-output", default=str(data_dir / "related_jobs.csv"), help="Related jobs CSV output")
     parser.add_argument("--all-output", default=str(data_dir / "published_all_jobs.csv"),
-                        help="Cumulative consumer-facing Berlin software jobs CSV output")
+                        help="Cumulative consumer-facing Berlin engineering jobs CSV output")
     parser.add_argument("--daily-output", default=str(data_dir / "daily_new_jobs.csv"), help="Daily new jobs CSV output")
     parser.add_argument("--linkedin-output", default=str(data_dir / "linkedin_daily_jobs.csv"),
                         help="LinkedIn daily query CSV output")
@@ -444,6 +436,8 @@ def main() -> int:
                 related_only=not args.linkedin_raw_daily,
             )
 
+    current_df = classify_jobs(current_df)
+
     all_output = Path(args.all_output)
     previous_published_path = all_output if all_output.exists() else Path(args.related_output)
     previous_published_df = load_jobs(previous_published_path) if previous_published_path.exists() else None
@@ -459,7 +453,7 @@ def main() -> int:
     save_csv(daily_new_df, daily_output)
 
     print(f"Current jobs: {len(current_df)}")
-    print(f"All published Berlin software jobs: {len(published_df)} -> {all_output}")
+    print(f"All published Berlin engineering jobs: {len(published_df)} -> {all_output}")
     print(f"Related jobs: {len(related_df)} -> {related_output}")
     if previous_path and previous_path.exists():
         print(f"Previous baseline: {previous_path}")

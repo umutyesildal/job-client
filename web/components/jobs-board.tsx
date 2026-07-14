@@ -4,20 +4,41 @@ import { useEffect, useMemo, useState } from "react";
 import type { Job, JobsSnapshot } from "@/lib/jobs";
 
 const PAGE_SIZE = 40;
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTH_NUMBER = new Map(MONTHS.map((month, index) => [month.toLowerCase(), index + 1]));
+
+function dateParts(value: string): { year: number; month: number; day: number } | null {
+  const normalized = value.trim();
+  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})/.exec(normalized);
+  if (iso) return { year: Number(iso[1]), month: Number(iso[2]), day: Number(iso[3]) };
+
+  const named = /^([A-Za-z]{3,9})\s+(\d{1,2}),?\s+(\d{4})/.exec(normalized);
+  const month = named ? MONTH_NUMBER.get(named[1].slice(0, 3).toLowerCase()) : undefined;
+  if (named && month) return { year: Number(named[3]), month, day: Number(named[2]) };
+  return null;
+}
 
 function jobDate(value: string): string {
-  const parsed = new Date(value);
-  if (!value || Number.isNaN(parsed.getTime())) return value || "Unknown";
-  return new Intl.DateTimeFormat("en", { month: "short", day: "numeric", year: "numeric" }).format(parsed);
+  const parsed = dateParts(value);
+  if (!parsed) return value || "Unknown";
+  return `${MONTHS[parsed.month - 1]} ${parsed.day}, ${parsed.year}`;
 }
 
 function dateValue(value: string): number {
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
+  const parsed = dateParts(value);
+  return parsed ? parsed.year * 10_000 + parsed.month * 100 + parsed.day : 0;
+}
+
+function compareText(left: string, right: string): number {
+  const normalizedLeft = left.toLowerCase();
+  const normalizedRight = right.toLowerCase();
+  if (normalizedLeft < normalizedRight) return -1;
+  if (normalizedLeft > normalizedRight) return 1;
+  return 0;
 }
 
 function options(jobs: Job[], field: "role" | "level" | "workMode"): string[] {
-  return [...new Set(jobs.map((job) => job[field]).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+  return [...new Set(jobs.map((job) => job[field]).filter(Boolean))].sort(compareText);
 }
 
 export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
@@ -26,7 +47,6 @@ export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
   const [role, setRole] = useState("");
   const [level, setLevel] = useState("");
   const [workMode, setWorkMode] = useState("");
-  const [tech, setTech] = useState("");
   const [sortDirection, setSortDirection] = useState<"desc" | "asc">("desc");
   const [page, setPage] = useState(1);
   const jobs = source === "all" ? snapshot.all : snapshot.daily;
@@ -35,7 +55,6 @@ export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
     roles: options(jobs, "role"),
     levels: options(jobs, "level"),
     workModes: options(jobs, "workMode"),
-    technologies: [...new Set(jobs.flatMap((job) => job.techStack))].sort((a, b) => a.localeCompare(b)),
   }), [jobs]);
 
   const filtered = useMemo(() => {
@@ -47,29 +66,27 @@ export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
         return (!needle || searchable.includes(needle))
           && (!role || job.role === role)
           && (!level || job.level === level)
-          && (!workMode || job.workMode === workMode)
-          && (!tech || job.techStack.includes(tech));
+          && (!workMode || job.workMode === workMode);
       })
       .sort((a, b) => {
         const dateDifference = dateValue(a.postedDate) - dateValue(b.postedDate);
         if (dateDifference) return sortDirection === "asc" ? dateDifference : -dateDifference;
-        return a.company.localeCompare(b.company) || a.title.localeCompare(b.title);
+        return compareText(a.company, b.company) || compareText(a.title, b.title);
       });
-  }, [jobs, query, role, level, workMode, tech, sortDirection]);
+  }, [jobs, query, role, level, workMode, sortDirection]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const visibleJobs = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
-  const hasFilters = Boolean(query || role || level || workMode || tech);
+  const hasFilters = Boolean(query || role || level || workMode);
 
-  useEffect(() => setPage(1), [source, query, role, level, workMode, tech, sortDirection]);
+  useEffect(() => setPage(1), [source, query, role, level, workMode, sortDirection]);
 
   function clearFilters() {
     setQuery("");
     setRole("");
     setLevel("");
     setWorkMode("");
-    setTech("");
   }
 
   return (
@@ -79,13 +96,13 @@ export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
           <span className="brand-mark">B</span>
           <span>Daily Berlin Jobs</span>
         </a>
-        <span className="header-note">Fresh Berlin tech roles, daily.</span>
+        <span className="header-note">Fresh Berlin engineering roles, daily.</span>
       </header>
 
       <section className="hero">
         <span className="eyebrow">Updated daily from Google Sheets</span>
-        <h1>Software jobs in Berlin,<br />without the noise.</h1>
-        <p>Current roles from company career pages and LinkedIn, collected in one place.</p>
+        <h1>Engineering jobs in Berlin,<br />without the noise.</h1>
+        <p>Software, data, platform and security roles from company career pages and LinkedIn.</p>
       </section>
 
       <section className="controls">
@@ -93,21 +110,18 @@ export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
           <button className={source === "all" ? "active" : ""} onClick={() => setSource("all")}>All Jobs <b>{snapshot.all.length}</b></button>
           <button className={source === "daily" ? "active" : ""} onClick={() => setSource("daily")}>New Today <b>{snapshot.daily.length}</b></button>
         </div>
-        <input aria-label="Search jobs" placeholder="Search role, company, keyword, or technology" type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
+        <input aria-label="Search jobs" placeholder="Search role, company, or technology" type="search" value={query} onChange={(event) => setQuery(event.target.value)} />
       </section>
 
       <section className="filter-bar" aria-label="Job filters">
-        <label className="filter-field"><span>Role</span><select value={role} onChange={(event) => setRole(event.target.value)}>
-          <option value="">Any role</option>{filterOptions.roles.map((item) => <option key={item}>{item}</option>)}
+        <label className="filter-field"><span>Engineering area</span><select value={role} onChange={(event) => setRole(event.target.value)}>
+          <option value="">All areas</option>{filterOptions.roles.map((item) => <option key={item}>{item}</option>)}
         </select></label>
         <label className="filter-field"><span>Level</span><select value={level} onChange={(event) => setLevel(event.target.value)}>
           <option value="">Any level</option>{filterOptions.levels.map((item) => <option key={item}>{item}</option>)}
         </select></label>
         <label className="filter-field"><span>Work style</span><select value={workMode} onChange={(event) => setWorkMode(event.target.value)}>
           <option value="">Any work style</option>{filterOptions.workModes.map((item) => <option key={item}>{item}</option>)}
-        </select></label>
-        <label className="filter-field"><span>Technology</span><select value={tech} onChange={(event) => setTech(event.target.value)}>
-          <option value="">Any technology</option>{filterOptions.technologies.map((item) => <option key={item}>{item}</option>)}
         </select></label>
         <button className="clear-filters" disabled={!hasFilters} onClick={clearFilters}>Clear</button>
         <span className="result-count">{filtered.length} jobs</span>
@@ -125,14 +139,9 @@ export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
             <div className="role-cell">
               <strong>{job.title || "Untitled role"}</strong>
               <div className="job-tags">
-                {job.role !== "Other" && <span className="role-tag">{job.role}</span>}
+                <span className="role-tag">{job.role}</span>
                 {job.level !== "Not specified" && <span className="meta-tag">{job.level}</span>}
-                <span className="meta-tag">{job.workMode}</span>
-                {job.techStack.slice(0, 4).map((item) => <span className="tech-tag" key={item}>{item}</span>)}
-                {job.keywords
-                  .filter((item) => item !== job.role && item !== job.department && !job.techStack.includes(item))
-                  .slice(0, 2)
-                  .map((item) => <span className="keyword-tag" key={item}>{item}</span>)}
+                {job.workMode !== "Not specified" && <span className="meta-tag">{job.workMode}</span>}
               </div>
             </div>
             <span>{job.company || "Unknown company"}</span>
@@ -152,10 +161,8 @@ export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
       )}
 
       <footer className="site-footer">
-        <span>Made with care by Umut.</span>
+        <span>Daily Berlin Jobs · Engineering roles updated daily.</span>
         <nav aria-label="Creator links">
-          <a href="https://www.linkedin.com/in/umutyesildal" target="_blank" rel="noreferrer">LinkedIn</a>
-          <a href="https://github.com/umutyesildal" target="_blank" rel="noreferrer">GitHub</a>
           <a className="admin-footer-link" href="/admin" aria-label="Admin">Admin</a>
         </nav>
       </footer>
