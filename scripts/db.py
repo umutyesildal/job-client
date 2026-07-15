@@ -62,6 +62,7 @@ def main() -> int:
                 pd.read_csv(args.source, low_memory=False, dtype=str).fillna("")
             )
         )
+        dataframe = dataframe[dataframe["Role"].astype(str).str.strip().ne("")].copy()
         stats = PostgresJobStorage(retention_days=args.retention_days).upsert_jobs(dataframe)
         print(
             f"Imported jobs: {stats.inserted} inserted, {stats.updated} updated, "

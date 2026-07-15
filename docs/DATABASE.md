@@ -47,7 +47,8 @@ postgresql://daily_jobs:daily_jobs@localhost:5432/daily_berlin_jobs
 
 5. Optionally backfill the current canonical export. Every imported row is
    reclassified by the same Python taxonomy used by the crawler, and rows
-   older than 30 days are skipped automatically:
+   outside the engineering taxonomy or older than 30 days are skipped
+   automatically:
 
    ```bash
    .venv/bin/python scripts/db.py import-jobs data/published_all_jobs.csv
@@ -73,6 +74,10 @@ Migration `003_supabase_api_lockdown.sql` revokes public-schema access from
 Supabase's `anon` and `authenticated` API roles. The web application uses only
 its server-side PostgreSQL connection; no database URL or Data API key reaches
 the browser.
+
+Migration `004_enforce_engineering_jobs.sql` removes legacy rows with an empty
+role and adds a database constraint so non-engineering rows cannot enter the
+canonical job table.
 
 ## Daily lifecycle
 
