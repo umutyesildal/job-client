@@ -11,6 +11,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO_ROOT / "job_scraper" / "src"))
 
 from data_controller import DataController  # noqa: E402
+from post_process_jobs import classify_jobs  # noqa: E402
 from postgres_storage import PostgresJobStorage  # noqa: E402
 
 
@@ -56,8 +57,10 @@ def main() -> int:
             dataframe = controller.load_data_from_csv(args.source)
         print(f"Imported company sources: {storage.upsert_companies(dataframe)}")
     else:
-        dataframe = DataController().normalize_jobs_dataframe(
-            pd.read_csv(args.source, low_memory=False, dtype=str).fillna("")
+        dataframe = classify_jobs(
+            DataController().normalize_jobs_dataframe(
+                pd.read_csv(args.source, low_memory=False, dtype=str).fillna("")
+            )
         )
         stats = PostgresJobStorage(retention_days=args.retention_days).upsert_jobs(dataframe)
         print(

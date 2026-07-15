@@ -45,8 +45,9 @@ postgresql://daily_jobs:daily_jobs@localhost:5432/daily_berlin_jobs
      catalog/companies.yaml --input-type yaml
    ```
 
-5. Optionally backfill the current canonical export. Rows older than 30 days
-   are skipped automatically:
+5. Optionally backfill the current canonical export. Every imported row is
+   reclassified by the same Python taxonomy used by the crawler, and rows
+   older than 30 days are skipped automatically:
 
    ```bash
    .venv/bin/python scripts/db.py import-jobs data/published_all_jobs.csv
@@ -67,6 +68,11 @@ ALTER ROLE daily_jobs_web LOGIN PASSWORD 'GENERATE_A_LONG_RANDOM_PASSWORD';
 
 Keep the migration/crawler connection in GitHub Actions. Never reuse the
 database owner URL in browser-accessible code.
+
+Migration `003_supabase_api_lockdown.sql` revokes public-schema access from
+Supabase's `anon` and `authenticated` API roles. The web application uses only
+its server-side PostgreSQL connection; no database URL or Data API key reaches
+the browser.
 
 ## Daily lifecycle
 

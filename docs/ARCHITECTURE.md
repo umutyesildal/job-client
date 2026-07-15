@@ -56,6 +56,8 @@ cannot immediately return as a new listing after its full payload is deleted.
 
 - Vercel receives a pooled, read-oriented connection string; it never exposes
   it to browser JavaScript.
+- Supabase `anon` and `authenticated` roles have no access to the `public`
+  schema; the browser Data API is not part of this architecture.
 - GitHub Actions receives the crawler writer connection string.
 - Schema migrations are run by a maintainer/workflow connection.
 - Community company suggestions remain GitHub issues or PRs until a maintainer
