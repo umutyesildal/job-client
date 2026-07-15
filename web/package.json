@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "google-auth-library": "^10.9.0",
     "next": "^16.2.10",
     "react": "^19.2.7",
