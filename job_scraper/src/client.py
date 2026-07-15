@@ -775,8 +775,7 @@ class JobCrawlerController:
                         if recommended_delay > self.delay:
                             CrawlerLogger.warning_rate_limiting(recommended_delay, self.delay)
 
-        if all_jobs:
-            self.save_jobs(all_jobs)
+        self.save_jobs(all_jobs)
 
         # Final summary
         self.run_end_time = time.time()
@@ -932,40 +931,25 @@ class JobCrawlerController:
     
     def save_jobs(self, jobs: List[Dict]):
         """
-        Save jobs to a single consolidated CSV file
-        Appends new jobs and handles deduplication
+        Save only this crawl's raw snapshot.
+
+        PostgreSQL owns history and retention. Keeping cumulative raw crawler
+        payloads made the local CSV grow without bound and is unnecessary.
         """
-        if not jobs:
-            return
-        
         output_path = os.path.join(self.output_dir, 'all_jobs.csv')
-        new_jobs_df = pd.DataFrame(jobs)
+        empty_columns = [
+            'Company', 'Company Name', 'Job Title', 'Location', 'Job Link',
+            'Job Description', 'Employment Type', 'Department', 'Posted Date',
+            'Company Description', 'Remote', 'Label', 'ATS'
+        ]
+        new_jobs_df = pd.DataFrame(jobs) if jobs else pd.DataFrame(columns=empty_columns)
         new_jobs_df = self._normalize_jobs_dataframe(new_jobs_df)
         
-        # Check if file exists AND has content
-        if os.path.exists(output_path) and os.path.getsize(output_path) > 0:
-            try:
-                existing_df = pd.read_csv(output_path, encoding='utf-8', low_memory=False, dtype=str)
-                existing_df = self._normalize_jobs_dataframe(existing_df)
-                
-                # Combine existing and new jobs
-                combined_df = pd.concat([existing_df, new_jobs_df], ignore_index=True)
-                combined_df = self._normalize_jobs_dataframe(combined_df)
-                
-                # Remove duplicates based on Job Link (keep most recent = last occurrence)
-                combined_df = combined_df.drop_duplicates(subset=['Job Link'], keep='last')
-                
-                # Save back
-                combined_df.to_csv(output_path, index=False, encoding='utf-8')
-                
-                new_count = len(combined_df) - len(existing_df)
-                CrawlerLogger.debug_jobs_added(new_count, len(combined_df))
-                
-            except Exception as e:
-                CrawlerLogger.jobs_update_error(e)
-                # Fallback: just append with header
-                new_jobs_df.to_csv(output_path, mode='a', header=True, index=False, encoding='utf-8')
-        else:
-            # First time or empty file: create new file with header
-            new_jobs_df.to_csv(output_path, index=False, encoding='utf-8')
-            CrawlerLogger.debug_new_database(len(jobs))
+        links = new_jobs_df['Job Link'].fillna('').astype(str).str.strip()
+        with_links = new_jobs_df[links.ne('')].drop_duplicates(subset=['Job Link'], keep='last')
+        without_links = new_jobs_df[links.eq('')].drop_duplicates(
+            subset=['Company Name', 'Job Title', 'Location'], keep='last'
+        )
+        snapshot_df = pd.concat([with_links, without_links], ignore_index=True, sort=False)
+        snapshot_df.to_csv(output_path, index=False, encoding='utf-8')
+        CrawlerLogger.debug_new_database(len(snapshot_df))

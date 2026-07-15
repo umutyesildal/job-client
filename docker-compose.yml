@@ -1,0 +1,19 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: daily_berlin_jobs
+      POSTGRES_USER: daily_jobs
+      POSTGRES_PASSWORD: daily_jobs
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U daily_jobs -d daily_berlin_jobs"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    volumes:
+      - daily_berlin_jobs_postgres:/var/lib/postgresql/data
+
+volumes:
+  daily_berlin_jobs_postgres:

@@ -1,0 +1,30 @@
+name: PostgreSQL Backup
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "40 6 * * *"
+
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+    steps:
+      - name: Validate configuration
+        run: test -n "$DATABASE_URL"
+      - name: Create compressed logical backup
+        run: |
+          docker run --rm -e DATABASE_URL postgres:17-alpine \
+            sh -c 'pg_dump --no-owner --no-privileges "$DATABASE_URL"' \
+            | gzip -9 > daily-berlin-jobs.sql.gz
+      - name: Upload encrypted-at-rest workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daily-berlin-jobs-${{ github.run_id }}
+          path: daily-berlin-jobs.sql.gz
+          retention-days: 14

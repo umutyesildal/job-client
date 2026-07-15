@@ -1,7 +1,7 @@
 """Canonical classification rules for Daily Berlin Jobs engineering roles.
 
 The publishing pipeline owns classification. Consumers such as the Next.js app
-read the normalized columns written to Google Sheets instead of reimplementing
+read the normalized columns written to PostgreSQL instead of reimplementing
 these rules.
 """
 

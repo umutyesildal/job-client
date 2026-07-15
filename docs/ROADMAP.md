@@ -14,7 +14,7 @@ that can be reviewed in small pieces.
 ## Next
 
 - expand and normalize the company/ATS catalog without exposing production
-  Sheets access;
+  database access;
 - accept community company suggestions through a moderated queue;
 - add duplicate, careers-URL, ATS-support, and stale-source audits;
 - add automated accessibility checks;
@@ -27,9 +27,8 @@ that can be reviewed in small pieces.
 
 - evaluate additional cities or job families only through a versioned scope
   proposal and measured dataset review;
-- support community-operated deployments with their own Sheets or storage;
-- consider replacing the production spreadsheet when scale or governance makes
-  that change worthwhile.
+- support community-operated deployments with any standard PostgreSQL host;
+- add database-size and retention health alerts before free-tier limits.
 
 Roadmap items are directions, not promises. Open an issue before starting a
 large change so scope and architecture can be agreed first.

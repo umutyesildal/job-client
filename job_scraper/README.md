@@ -51,29 +51,20 @@ Output format:
 ## Development
 
 ```bash
-cd job_scraper/src
+# From the repository root, crawl companies stored in PostgreSQL
+.venv/bin/python job_scraper/src/main.py -t postgres -l 1
 
-# Test single company
-python3 main.py -l 1
+# Or use a reviewed local YAML catalog
+.venv/bin/python job_scraper/src/main.py catalog/companies.yaml -t yaml -l 3 -d 0.1
 
-# Fast development cycle
-python3 main.py -l 3 -d 0.1
-
-# Google Sheets input/output
-python3 main.py -t sheets "GOOGLE_SHEET_URL_OR_ID" \
-  --input-worksheet companies \
-  --output-sheet "GOOGLE_SHEET_URL_OR_ID" \
-  --output-worksheet all_jobs
-
-# Current v2 source sheet
-python3 main.py -t sheets "https://docs.google.com/spreadsheets/d/1sYI0IqzXp_W19eAYDCdC46ZjzrWqW5fwHfY0sAzUxKw/edit?gid=2095282077#gid=2095282077" \
-  --input-worksheet OneSingle
-
-# Build Related Jobs and Daily New Jobs outputs
-python3 post_process_jobs.py
+# Classify, filter, deduplicate, and publish the rolling 30-day collection
+.venv/bin/python job_scraper/src/post_process_jobs.py \
+  --storage-backend postgres --retention-days 30
 
 # Add new scraper
 cp scrapers/template_scraper.py scrapers/undone/new_scraper.py
 # Edit implementation, add to SCRAPER_MAP in src/client.py
 ```
 
+The raw `all_jobs.csv` is a replaceable single-run snapshot. PostgreSQL owns
+canonical history; full public job rows expire after 30 days.

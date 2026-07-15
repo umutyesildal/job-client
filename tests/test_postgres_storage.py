@@ -1,0 +1,53 @@
+import sys
+import unittest
+from datetime import datetime
+from zoneinfo import ZoneInfo
+from pathlib import Path
+
+
+SRC_DIR = Path(__file__).resolve().parents[1] / "job_scraper" / "src"
+sys.path.insert(0, str(SRC_DIR))
+
+from postgres_storage import _posted_date, canonicalize_url, job_keys  # noqa: E402
+
+
+class PostgresIdentityTests(unittest.TestCase):
+    def test_tracking_parameters_and_fragments_do_not_change_url(self):
+        first = canonicalize_url("https://EXAMPLE.com/jobs/42/?utm_source=x&lang=en#apply")
+        second = canonicalize_url("https://example.com/jobs/42?lang=en")
+        self.assertEqual(first, second)
+
+    def test_changed_url_does_not_change_semantic_identity(self):
+        base = {
+            "Company Name": "München Labs",
+            "Job Title": "Junior Software Engineer (m/f/d)",
+            "Location": "Berlin, Germany",
+        }
+        changed = {
+            "Company Name": "Munchen Labs",
+            "Job Title": "Junior Software Engineer - m/f/d",
+            "Location": "Berlin Germany",
+        }
+        first_identity, first_url, _ = job_keys({**base, "Job Link": "https://example.com/old"})
+        second_identity, second_url, _ = job_keys({**changed, "Job Link": "https://example.com/new"})
+        self.assertEqual(first_identity, second_identity)
+        self.assertNotEqual(first_url, second_url)
+
+    def test_location_is_part_of_identity(self):
+        berlin, _, _ = job_keys({
+            "Company Name": "Example", "Job Title": "Engineer", "Location": "Berlin"
+        })
+        munich, _, _ = job_keys({
+            "Company Name": "Example", "Job Title": "Engineer", "Location": "Munich"
+        })
+        self.assertNotEqual(berlin, munich)
+
+    def test_relative_posted_date_is_normalized(self):
+        self.assertEqual(
+            _posted_date("0 hours ago"),
+            datetime.now(ZoneInfo("Europe/Berlin")).date(),
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

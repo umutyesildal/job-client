@@ -1,12 +1,18 @@
 import type { Job, JobsSnapshot } from "./jobs";
 
+function sampleDate(daysAgo: number): string {
+  const value = new Date();
+  value.setUTCDate(value.getUTCDate() - daysAgo);
+  return value.toISOString().slice(0, 10);
+}
+
 const SAMPLE_JOBS: Job[] = [
   {
     company: "Open Source Labs",
     title: "Backend Engineer",
     location: "Berlin, Germany",
     link: "https://example.com/jobs/backend-engineer",
-    postedDate: "2026-07-14",
+    postedDate: sampleDate(0),
     remote: "Hybrid",
     department: "Engineering",
     keywords: ["backend", "typescript", "api"],
@@ -20,7 +26,7 @@ const SAMPLE_JOBS: Job[] = [
     title: "Platform Engineer",
     location: "Berlin, Germany",
     link: "https://example.com/jobs/platform-engineer",
-    postedDate: "2026-07-14",
+    postedDate: sampleDate(0),
     remote: "Remote",
     department: "Infrastructure",
     keywords: ["platform", "cloud", "kubernetes"],
@@ -34,7 +40,7 @@ const SAMPLE_JOBS: Job[] = [
     title: "Embedded Software Engineer",
     location: "Berlin, Germany",
     link: "https://example.com/jobs/embedded-software-engineer",
-    postedDate: "2026-07-13",
+    postedDate: sampleDate(1),
     remote: "On-site",
     department: "Robotics",
     keywords: ["embedded", "firmware", "robotics"],
@@ -48,7 +54,7 @@ const SAMPLE_JOBS: Job[] = [
     title: "Machine Learning Engineer",
     location: "Berlin, Germany",
     link: "https://example.com/jobs/ml-engineer",
-    postedDate: "2026-07-12",
+    postedDate: sampleDate(2),
     remote: "Hybrid",
     department: "Data",
     keywords: ["machine learning", "data", "python"],
@@ -63,6 +69,6 @@ export function getSampleJobsSnapshot(): JobsSnapshot {
   return {
     all: SAMPLE_JOBS.map((job) => ({ ...job })),
     daily: SAMPLE_JOBS.slice(0, 3).map((job) => ({ ...job })),
-    updatedAt: "2026-07-14T00:00:00.000Z",
+    updatedAt: new Date().toISOString(),
   };
 }

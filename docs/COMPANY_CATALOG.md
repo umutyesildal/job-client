@@ -4,12 +4,13 @@
 
 Grow the Berlin company source list with community help while keeping the
 production crawler reliable. Public contributors should be able to suggest a
-company without receiving access to Google Sheets or publishing directly to
-`OneSingle`.
+company without receiving database credentials or publishing directly to the
+active `companies` and `career_sources` tables.
 
 ## Current production contract
 
-The crawler currently reads active rows from the `OneSingle` worksheet:
+The crawler reads active rows from PostgreSQL. The legacy `OneSingle` worksheet
+is used only for the one-time migration:
 
 | Field | Meaning |
 | --- | --- |
@@ -20,7 +21,12 @@ The crawler currently reads active rows from the `OneSingle` worksheet:
 | `Description` | Optional company context |
 | `Active` | Only `active` rows enter the crawl |
 
-This worksheet remains maintainer-controlled.
+Production catalog writes remain maintainer-controlled.
+
+Reviewed, non-secret catalog changes are versioned in
+`catalog/companies.yaml`; `catalog/ats.yaml` lists canonical supported labels.
+A maintainer imports approved YAML into PostgreSQL. The database remains the
+runtime source used by the crawler.
 
 ## Contribution flow
 
@@ -30,7 +36,7 @@ flowchart LR
     I --> V["Duplicate, URL and ATS checks"]
     V --> Q["Moderation queue"]
     Q -->|approved| C["Canonical company catalog"]
-    C --> S["OneSingle sync"]
+    C --> S["Maintainer database import"]
     S --> R["Next crawler run"]
     Q -->|needs info or rejected| I
 ```
@@ -71,8 +77,8 @@ scraper-support task instead of being silently activated with the wrong label.
 
 ## Guardrails
 
-- Anonymous submissions never write directly to `OneSingle`.
-- Production Sheets credentials stay server-only and maintainer-only.
+- Anonymous submissions never write directly to production tables.
+- Production database credentials stay server-only and maintainer-only.
 - Approval and rejection actions keep an audit trail.
 - Native form intake must add rate limiting, spam protection, URL allow/deny
   checks, and duplicate detection before it writes to a queue.
@@ -88,7 +94,7 @@ scraper-support task instead of being silently activated with the wrong label.
 
 ### Phase 2 — catalog health
 
-- export a reviewed, non-sensitive canonical catalog from `OneSingle`;
+- export a reviewed, non-sensitive catalog fixture from PostgreSQL;
 - normalize ATS aliases into stable identifiers;
 - add duplicate, URL, supported-scraper, and stale-source audits;
 - report active, failing, unsupported, and unverified company counts.
@@ -97,7 +103,7 @@ scraper-support task instead of being silently activated with the wrong label.
 
 - add a `Company Suggestions` queue or repository-backed catalog;
 - validate suggestions automatically;
-- let maintainers approve and sync verified records into `OneSingle`;
+- let maintainers approve and sync verified records into PostgreSQL;
 - expose status back to the original suggestion.
 
 ### Phase 4 — native public form

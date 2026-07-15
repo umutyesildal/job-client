@@ -1,335 +1,175 @@
 # Daily Berlin Jobs
 
-[![CI](https://github.com/umutyesildal/job-client/actions/workflows/ci.yml/badge.svg)](https://github.com/umutyesildal/job-client/actions/workflows/ci.yml)
+[![CI](https://github.com/umutyesildal/daily-berlin-jobs/actions/workflows/ci.yml/badge.svg)](https://github.com/umutyesildal/daily-berlin-jobs/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-Daily Berlin Jobs is an open-source public-interest project. Fork it, run it
-with sample data, adapt it for your community, and help improve the shared
-crawler and job-search experience.
+Daily Berlin Jobs is an open-source, consumer-facing Berlin engineering job
+board. It combines a Python ATS/LinkedIn crawler, a versioned engineering
+taxonomy, PostgreSQL, and a Next.js public application.
 
-Daily Berlin Jobs is a consumer-facing Berlin engineering job board backed by
-the existing Python crawler and Google Sheets publishing pipeline.
+The current scope is tech engineering: software, data/AI, platform/cloud,
+security, mobile, QA, and embedded/firmware/robotics. Mechanical, electrical,
+civil, manufacturing, energy, and field/service engineering remain out of
+scope. Python's `engineering-v2` taxonomy is the only classification authority.
 
-The current product scope is intentionally tech-engineering only. LinkedIn
-queries cover software, data/AI, platform/cloud, security, mobile, QA, and
-embedded/firmware/robotics engineering. Physical disciplines such as mechanical,
-electrical, civil, manufacturing, energy, and field/service engineering remain
-out of scope. The taxonomy is versioned so this boundary can change safely.
-
-The public product is a Next.js app hosted on Vercel. Google Sheets is the
-canonical data store for the website. The long-running Python
-crawler stays outside Vercel and runs in GitHub Actions, either on a daily
-schedule or when an authenticated admin clicks **Run Daily Update**.
-
-## Product behavior
-
-- **All Jobs** preserves the previous canonical collection and adds newly
-  discovered Berlin engineering roles.
-- **New Today** contains only jobs posted today or yesterday in the
-  `Europe/Berlin` timezone. The web app enforces this again when reading Sheets,
-  so a delayed crawler run cannot leave older jobs visible.
-- Empty or `Unknown` company, title, location, and date values are excluded from
-  the fresh-jobs view.
-- Duplicate company/title/location combinations are collapsed in the UI.
-- LinkedIn daily results are included in the same publishing pipeline.
-- Every incoming job is classified in the Python publishing pipeline before it
-  can enter a public worksheet.
-- The public app consumes the normalized Sheets columns and does not maintain a
-  second set of role-classification rules.
-
-## Target architecture
+## Architecture
 
 ```mermaid
 flowchart LR
-    A["Next.js public job board<br/>Vercel"] -->|"server-side read"| S["Google Sheets<br/>source of truth"]
-    B["Next.js admin panel<br/>Vercel"] -->|"workflow_dispatch"| G["GitHub Actions<br/>Python crawler"]
-    G -->|"read company sources"| C["OneSingle worksheet"]
-    G -->|"publish"| S
-    B -->|"poll run status"| G
-    B -->|"refresh after success"| A
+    V["Next.js / Vercel"] -->|server-side read| P["Supabase PostgreSQL"]
+    A["Admin panel"] -->|dispatch| G["GitHub Actions crawler"]
+    G -->|company sources and canonical jobs| P
+    G -->|temporary| R["Raw crawl snapshot"]
+    R --> T["Python engineering-v2 classification"]
+    T --> P
 ```
 
-### Responsibility boundaries
+PostgreSQL is the canonical store. Supabase is the recommended hosted provider,
+but the project uses standard PostgreSQL URLs and SQL so it can also run on
+Neon, Railway, Render, or a local container.
 
-| Component | Responsibility |
+Only filtered public jobs are persisted. The large raw crawl stays ephemeral.
+Full job rows have a rolling 30-day retention period; compact fingerprints are
+kept longer to stop old or URL-mutated vacancies from being re-added as new.
+
+## Run locally
+
+Prerequisites: Docker, Python 3.12+, and Node.js 22+.
+
+```bash
+git clone https://github.com/umutyesildal/daily-berlin-jobs.git
+cd daily-berlin-jobs
+make setup
+make dev
+```
+
+Open [http://localhost:3000](http://localhost:3000). The checked-in example uses
+`USE_SAMPLE_DATA=true`, so the UI starts without cloud credentials. Change it to
+`false` to read the local PostgreSQL database.
+
+`make setup` creates ignored local env files, starts PostgreSQL, installs Python
+and Node dependencies, and applies migrations. It does not need production
+credentials.
+
+Useful database commands:
+
+```bash
+.venv/bin/python scripts/db.py migrate
+.venv/bin/python scripts/db.py doctor
+.venv/bin/python scripts/db.py import-companies companies.csv
+.venv/bin/python scripts/db.py import-companies catalog/companies.yaml --input-type yaml
+.venv/bin/python scripts/db.py import-jobs data/published_all_jobs.csv
+```
+
+## Data model and deduplication
+
+| Object | Responsibility |
 | --- | --- |
-| Next.js on Vercel | Public UI, search/filtering, admin login, run trigger and progress |
-| GitHub Actions | Long-running ATS + LinkedIn crawl and post-processing |
-| Google Sheets | Canonical published datasets |
-| Python pipeline | Collection, engineering classification, filtering, deduplication and Sheets writes |
+| `companies` | Maintainer-approved companies |
+| `career_sources` | ATS label and career page configuration |
+| `jobs` | Canonical rolling 30-day job payloads |
+| `job_fingerprints` | Lightweight historical dedup keys |
+| `job_url_aliases` | Historical canonical URL hashes for each fingerprint |
+| `crawl_runs` | Publish counts, failures, and retention results |
+| `public_jobs` | Public 30-day SQL view |
+| `daily_jobs` | Today and yesterday in Berlin time |
 
-The crawler must not run inside a Vercel request. It can exceed function
-duration limits, launches subprocesses, and produces intermediate files. The
-Vercel API route should only authenticate the admin and trigger the GitHub
-Actions workflow.
+Deduplication uses both a canonicalized URL and a normalized
+`company + title + location` identity. Tracking parameters, fragments,
+punctuation, casing, and diacritics do not create false new jobs. Unique indexes
+and a transaction provide the final concurrency guard.
 
-## Google Sheets model
+## Run the crawler
 
-The configured spreadsheet currently uses these worksheets:
+After importing company sources into PostgreSQL:
 
-| Worksheet | Purpose |
-| --- | --- |
-| `OneSingle` | Active company and ATS input configuration |
-| `All Jobs` | Canonical cumulative Berlin engineering jobs collection |
-| `Daily New Jobs` | Canonical today + yesterday collection |
-| `Related Jobs` | Legacy/internal profile-fit output; not a public UI source |
+```bash
+.venv/bin/python job_scraper/src/main.py -t postgres
+.venv/bin/python job_scraper/src/post_process_jobs.py \
+  --storage-backend postgres \
+  --retention-days 30 \
+  --include-linkedin-daily \
+  --linkedin-raw-daily
+```
 
-Public rows carry `Role`, `Level`, `Work Mode`, `Tech Stack`, `Keywords`, and
-`Classification Version`. The current version is `engineering-v2`. The
-canonical rules live in `job_scraper/src/job_taxonomy.py`.
+The first command writes a single-run raw CSV snapshot. It replaces the prior
+raw snapshot instead of accumulating history. The second command classifies and
+filters every row before transactionally upserting only canonical public jobs.
 
-The Next.js application should read `All Jobs` and `Daily New Jobs` directly on
-the server. Browser code must never receive Google service-account credentials.
+During migration, `--storage-backend dual` can write PostgreSQL and the legacy
+Google Sheet for comparison. Sheets are not used by the public web runtime.
+
+## Supabase deployment
+
+Create a Supabase project, apply migrations, and perform the one-time company
+import. Configure:
+
+### GitHub Actions secret
+
+```text
+SUPABASE_DATABASE_URL=postgresql://...session-pooler...
+```
+
+### Vercel server-side variables
+
+```text
+USE_SAMPLE_DATA=false
+DATABASE_URL=postgresql://...transaction-pooler...
+DATABASE_SSL=true
+GITHUB_OWNER=umutyesildal
+GITHUB_REPO=daily-berlin-jobs
+GITHUB_WORKFLOW_ID=daily-update.yml
+GITHUB_ACTIONS_TOKEN=github_pat_replace_me
+ADMIN_PASSWORD_HASH=replace_with_a_password_hash
+SESSION_SECRET=replace_with_a_long_random_secret
+```
+
+Never prefix database credentials with `NEXT_PUBLIC_`. The browser receives job
+data, not credentials. The scheduled crawler, database backup, and Vercel app
+use separate server-side connections.
+
+Full instructions, one-time Sheet migration, quota thresholds, backup, restore,
+cutover, and rollback are in [docs/DATABASE.md](docs/DATABASE.md). Component and
+trust boundaries are in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Admin panel
 
-The small `/admin` surface should provide:
+The `/admin` route authenticates a maintainer and dispatches
+`.github/workflows/daily-update.yml`. The crawler does not run in a Vercel
+request. Only one workflow run is allowed at a time, and the UI polls GitHub for
+progress.
 
-- protected sign-in;
-- one **Run Daily Update** button;
-- current step and percentage;
-- GitHub Actions run link and recent log summary;
-- last successful update time;
-- final public-page refresh after a successful run.
-
-Recommended flow:
-
-1. `POST /api/admin/run` validates the admin session.
-2. The route calls GitHub's workflow-dispatch API for `daily-update.yml`.
-3. The workflow runs the existing Python pipeline and publishes all worksheets.
-4. `/api/admin/status` returns the GitHub Actions run status.
-5. On success, the client refreshes the public data.
-
-Only one active update should be allowed at a time. The run endpoint must reject
-unauthenticated requests and duplicate in-progress runs.
-
-## Environment variables
-
-Copy the example for local development:
+Create a password hash without storing the plaintext password:
 
 ```bash
-cp .env.example web/.env.local
+cd web
+node -e "const c=require('crypto');const s=c.randomBytes(16).toString('hex');const h=c.scryptSync(process.argv[1],s,64).toString('hex');console.log(s+':'+h)" 'your-password'
 ```
-
-The example enables `USE_SAMPLE_DATA=true`, so the public board runs without
-Google or GitHub credentials. Set it to `false` only when connecting your own
-spreadsheet. Production credentials are never shared with contributors.
-
-Never commit `.env`, `.env.local`, service-account JSON, private keys, session
-secrets, or GitHub tokens. Do not prefix secrets with `NEXT_PUBLIC_`; that prefix
-exposes values to browser bundles.
-
-### Next.js / Vercel
-
-Configure these in **Vercel → Project → Settings → Environment Variables** for
-Production, Preview and Development as appropriate:
-
-```text
-GOOGLE_SHEET_ID
-GOOGLE_SERVICE_ACCOUNT_JSON
-GITHUB_OWNER
-GITHUB_REPO
-GITHUB_WORKFLOW_ID
-GITHUB_ACTIONS_TOKEN
-ADMIN_PASSWORD_HASH
-SESSION_SECRET
-```
-
-`GITHUB_ACTIONS_TOKEN` should be a fine-grained token limited to this repository
-with **Actions: write** permission. `GOOGLE_SERVICE_ACCOUNT_JSON` remains
-server-only. After changing Vercel variables, create a new deployment because
-existing deployments do not receive the new values.
-
-For local Next.js development, Vercel variables can later be downloaded with:
-
-```bash
-vercel env pull .env.local
-```
-
-### GitHub Actions secrets
-
-The crawler workflow needs repository secrets for Sheets writes:
-
-```text
-GOOGLE_SERVICE_ACCOUNT_JSON
-```
-
-`GOOGLE_SHEET_ID` is non-secret project configuration and is currently declared
-in the workflow. The service-account JSON must be added manually in GitHub under
-**Settings → Secrets and variables → Actions**.
-
-The spreadsheet must be shared with the service-account email. The workflow can
-also use the repository's standard `GITHUB_TOKEN` for GitHub-native operations;
-it does not need the admin panel's fine-grained token.
-
-### Current Python compatibility
-
-The Python pipeline currently accepts one of:
-
-- `GOOGLE_SERVICE_ACCOUNT_JSON`
-- `GOOGLE_SERVICE_ACCOUNT_FILE`
-- `GOOGLE_APPLICATION_CREDENTIALS`
-
-API-key credentials are read-only. Publishing requires service-account or
-Application Default Credentials with Sheets write access.
-
-## Legacy local application
-
-The stdlib UI is retained temporarily for parity checks only. New product work
-belongs in `web/`; retire the legacy server after the deployed Next.js public
-board and admin flow have both been verified.
-
-```bash
-python3 daily_berlin_jobs/server.py
-```
-
-Open [http://127.0.0.1:8765](http://127.0.0.1:8765).
-
-The local **Run Daily Update** flow is:
-
-1. collect ATS and LinkedIn jobs;
-2. process and upload `All Jobs`, `Related Jobs`, and `Daily New Jobs`;
-3. sync the canonical Sheets datasets back locally;
-4. refresh the UI.
-
-## Python pipeline
-
-Install dependencies in a virtual environment:
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
-Run the crawler using the configured Google Sheet:
-
-```bash
-.venv/bin/python job_scraper/src/main.py \
-  "https://docs.google.com/spreadsheets/d/$GOOGLE_SHEET_ID/" \
-  -t sheets \
-  --input-worksheet OneSingle
-```
-
-Build and publish the consumer datasets:
-
-```bash
-.venv/bin/python job_scraper/src/post_process_jobs.py \
-  --include-linkedin-daily
-```
-
-Pull canonical published data from Sheets:
-
-```bash
-.venv/bin/python job_scraper/src/pull_from_sheets.py
-```
-
-## Classification and consumer filters
-
-Every incoming ATS or LinkedIn row is analyzed during `post_process_jobs.py`.
-Only Berlin tech-engineering jobs enter `All Jobs` and `Daily New Jobs`;
-normalized classification fields are written with the row. LinkedIn discovery
-uses discipline-specific Engineer searches rather than generic Developer or
-unbounded Engineer searches.
-
-- **Level:** Intern / Working Student, Junior / Entry, Senior, Staff /
-  Principal, Lead, Manager / Head / Director
-- **Engineering area:** Software Engineering, Backend, Frontend, Fullstack,
-  Data / AI / ML, Platform / DevOps / SRE, Security, Mobile, QA / Test,
-  Embedded / Firmware / Robotics, Engineering Leadership
-- **Work mode:** Remote, Hybrid, On-site
-
-Audit the classified output before or after a Sheets sync:
-
-```bash
-.venv/bin/python scripts/audit_published_jobs.py
-```
-
-The default LinkedIn discovery set now uses Engineer searches for software,
-backend, frontend, fullstack, data, ML/AI, platform, DevOps/SRE/cloud, security,
-mobile, QA/test automation, embedded/firmware/robotics, and engineering
-leadership. It intentionally omits generic `engineer`, Developer-only, and
-physical-engineering searches.
 
 ## Tests
 
 ```bash
 .venv/bin/python -m unittest discover -s tests -v
-node --check daily_berlin_jobs/static/app.js
-```
-
-## Next.js application
-
-The Vercel application now lives in `web/` and uses the App Router:
-
-```bash
 cd web
-npm install
-npm run dev
+npm test
+npm run typecheck
+npm run build
 ```
 
-The default sample mode renders a small representative tech-engineering dataset
-and supports search, filtering, sorting, and pagination without external
-services.
+CI also starts a clean PostgreSQL service, applies every migration, and checks
+the schema. This catches clone/setup drift that sample-mode UI tests would miss.
 
-Configure Vercel with `web` as the project root directory. The public page reads
-`All Jobs` and `Daily New Jobs` from Sheets on the server. `/admin` uses an
-HTTP-only signed session and triggers `.github/workflows/daily-update.yml`.
+## Contributing
 
-Create an admin password hash without storing the plaintext password:
+Issues and focused pull requests are welcome. Start with [CONTRIBUTING.md](CONTRIBUTING.md),
+[docs/COMPANY_CATALOG.md](docs/COMPANY_CATALOG.md), and the code of conduct.
+Company suggestions are intake records: a maintainer checks duplicates, URL,
+ATS support, Berlin relevance, and crawler compatibility before importing them.
+Public submissions never write directly to production.
 
-```bash
-node -e 'const c=require("node:crypto");const s=c.randomBytes(16).toString("hex");process.stdout.write(`${s}:${c.scryptSync(process.argv[1],s,64).toString("hex")}\n`)' 'YOUR_PASSWORD'
-```
+## Security and license
 
-Store the output as `ADMIN_PASSWORD_HASH`. Generate `SESSION_SECRET` with:
+Report vulnerabilities according to [SECURITY.md](SECURITY.md). Do not commit
+database URLs, tokens, `.env` files, or service-account credentials.
 
-```bash
-openssl rand -base64 48
-```
-
-## Open-source community
-
-- Start with [`CONTRIBUTING.md`](CONTRIBUTING.md).
-- Read the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) before participating.
-- Report vulnerabilities through the private process in
-  [`SECURITY.md`](SECURITY.md).
-- See the [`community roadmap`](docs/ROADMAP.md) for contribution ideas.
-- Suggest a Berlin employer through the structured
-  [company suggestion form](https://github.com/umutyesildal/job-client/issues/new?template=company_suggestion.yml).
-- Read the [company and ATS catalog design](docs/COMPANY_CATALOG.md) before
-  changing source-list or moderation behavior.
-- All contributions are released under the [`MIT License`](LICENSE).
-
-Issues and focused pull requests are welcome. Production Sheets access is not
-required and is never granted for ordinary development; use sample mode or your
-own data source.
-
-## Remaining deployment and retirement work
-
-The `engineering-v2` live publisher and Vercel Preview parity checks completed
-on July 14, 2026. Remaining work:
-
-1. Validate a manual `/admin` run and the workflow status UI.
-2. Promote to Production after final review.
-3. Retire the local HTTP UI after admin parity is confirmed.
-
-See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the data contract and
-[`docs/REFACTOR.md`](docs/REFACTOR.md) for the decisions and rollout sequence.
-
-## Security rules
-
-- No secret may be committed or exposed through `NEXT_PUBLIC_*`.
-- Admin endpoints require a server-validated session.
-- Use a hashed admin password and a strong random session secret.
-- Keep the GitHub token repository-scoped with only `Actions: write`.
-- Rate-limit the run endpoint and reject concurrent updates.
-- Treat Google Sheets as the only published-data source of truth.
-
-## Deployment references
-
-- [Vercel environment variables](https://vercel.com/docs/environment-variables)
-- [Vercel environment-variable CLI](https://vercel.com/docs/cli/env)
-- [Vercel Function limits](https://vercel.com/docs/functions/limitations)
-- [GitHub workflow-dispatch API](https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event)
-- [Next.js `revalidatePath`](https://nextjs.org/docs/app/api-reference/functions/revalidatePath)
+Licensed under the [MIT License](LICENSE).

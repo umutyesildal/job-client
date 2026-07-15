@@ -1,0 +1,7 @@
+companies:
+  - name: Example Engineering Company
+    website: https://example.com
+    career_page: https://example.com/careers
+    ats: greenhouse
+    description: Replace this example with a real Berlin employer.
+    active: true
