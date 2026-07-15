@@ -26,7 +26,8 @@ schedule or when an authenticated admin clicks **Run Daily Update**.
 - **All Jobs** preserves the previous canonical collection and adds newly
   discovered Berlin engineering roles.
 - **New Today** contains only jobs posted today or yesterday in the
-  `Europe/Berlin` timezone.
+  `Europe/Berlin` timezone. The web app enforces this again when reading Sheets,
+  so a delayed crawler run cannot leave older jobs visible.
 - Empty or `Unknown` company, title, location, and date values are excluded from
   the fresh-jobs view.
 - Duplicate company/title/location combinations are collapsed in the UI.

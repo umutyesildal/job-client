@@ -1,5 +1,6 @@
 import { JWT } from "google-auth-library";
 import type { Job, JobsSnapshot } from "./jobs";
+import { filterRecentDailyRows } from "./recent-jobs";
 import { getSampleJobsSnapshot } from "./sample-data";
 
 type ServiceAccount = {
@@ -85,7 +86,7 @@ export async function getJobsSnapshot(): Promise<JobsSnapshot> {
   ]);
   return {
     all: allRows.map(toJob),
-    daily: dailyRows.map(toJob),
+    daily: filterRecentDailyRows(dailyRows).map(toJob),
     updatedAt: new Date().toISOString(),
   };
 }

@@ -21,7 +21,9 @@ budget on disciplines outside the product boundary.
 5. Matching rows are deduplicated and written to `All Jobs`.
 6. Jobs posted today or yesterday in `Europe/Berlin` are written to
    `Daily New Jobs`.
-7. Next.js reads both worksheets on the server and renders their normalized
+7. The web reader applies the same today-or-yesterday rule when it reads
+   `Daily New Jobs`, so stale rows disappear even if a scheduled crawl is delayed.
+8. Next.js reads both worksheets on the server and renders their normalized
    fields.
 
 The crawler runs in GitHub Actions. Vercel reads Sheets and dispatches the
