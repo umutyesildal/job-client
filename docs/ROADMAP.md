@@ -13,6 +13,10 @@ that can be reviewed in small pieces.
 
 ## Next
 
+- expand and normalize the company/ATS catalog without exposing production
+  Sheets access;
+- accept community company suggestions through a moderated queue;
+- add duplicate, careers-URL, ATS-support, and stale-source audits;
 - add automated accessibility checks;
 - improve scraper health reporting without exposing private configuration;
 - add contributor-friendly fixtures for ATS parsers;

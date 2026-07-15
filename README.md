@@ -26,7 +26,8 @@ schedule or when an authenticated admin clicks **Run Daily Update**.
 - **All Jobs** preserves the previous canonical collection and adds newly
   discovered Berlin engineering roles.
 - **New Today** contains only jobs posted today or yesterday in the
-  `Europe/Berlin` timezone.
+  `Europe/Berlin` timezone. The web app enforces this again when reading Sheets,
+  so a delayed crawler run cannot leave older jobs visible.
 - Empty or `Unknown` company, title, location, and date values are excluded from
   the fresh-jobs view.
 - Duplicate company/title/location combinations are collapsed in the UI.
@@ -294,6 +295,10 @@ openssl rand -base64 48
 - Report vulnerabilities through the private process in
   [`SECURITY.md`](SECURITY.md).
 - See the [`community roadmap`](docs/ROADMAP.md) for contribution ideas.
+- Suggest a Berlin employer through the structured
+  [company suggestion form](https://github.com/umutyesildal/job-client/issues/new?template=company_suggestion.yml).
+- Read the [company and ATS catalog design](docs/COMPANY_CATALOG.md) before
+  changing source-list or moderation behavior.
 - All contributions are released under the [`MIT License`](LICENSE).
 
 Issues and focused pull requests are welcome. Production Sheets access is not

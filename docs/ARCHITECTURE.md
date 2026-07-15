@@ -21,7 +21,9 @@ budget on disciplines outside the product boundary.
 5. Matching rows are deduplicated and written to `All Jobs`.
 6. Jobs posted today or yesterday in `Europe/Berlin` are written to
    `Daily New Jobs`.
-7. Next.js reads both worksheets on the server and renders their normalized
+7. The web reader applies the same today-or-yesterday rule when it reads
+   `Daily New Jobs`, so stale rows disappear even if a scheduled crawl is delayed.
+8. Next.js reads both worksheets on the server and renders their normalized
    fields.
 
 The crawler runs in GitHub Actions. Vercel reads Sheets and dispatches the
@@ -48,6 +50,16 @@ parse these values but must not recreate taxonomy regexes.
 A future expansion must create a new classification version, add tests for the
 new include/exclude boundary, update query inputs deliberately, and validate a
 manual workflow run before the public filters are changed.
+
+## Company catalog contributions
+
+Community company suggestions are intake records, not production crawler
+configuration. They must pass duplicate, URL, ATS, Berlin-scope, and scraper
+checks before a maintainer promotes them into `OneSingle`. The public client
+must never receive Sheets write credentials or write directly to the active
+company list.
+
+See `docs/COMPANY_CATALOG.md` for the proposed record and delivery phases.
 
 ## Legacy boundary
 
