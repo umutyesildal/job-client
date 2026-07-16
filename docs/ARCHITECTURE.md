@@ -26,6 +26,8 @@ published `role`, `level`, `work_mode`, `tech_stack`, `keywords`, and
 | --- | --- |
 | `companies` | Maintainer-approved companies |
 | `career_sources` | Active ATS/career page configuration |
+| `company_suggestions` | Moderated GitHub suggestions and current status |
+| `company_suggestion_events` | Append-only decision and synchronization audit trail |
 | `jobs` | Canonical public jobs from the last 30 days |
 | `job_fingerprints` | Small dedup history without full job payloads |
 | `job_url_aliases` | Every observed canonical URL hash for a fingerprint |

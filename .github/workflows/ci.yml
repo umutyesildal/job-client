@@ -41,6 +41,7 @@ jobs:
       - run: python scripts/db.py migrate
       - run: python scripts/db.py doctor
       - run: python scripts/smoke_postgres.py
+      - run: python scripts/catalog.py audit catalog/companies.yaml
       - run: python -m unittest discover -s tests -v
 
   web:

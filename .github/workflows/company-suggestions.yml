@@ -1,0 +1,154 @@
+name: Company suggestion moderation
+
+on:
+  issues:
+    types: [opened, edited, labeled]
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: company-suggestion-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  verify:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'company-suggestion') &&
+      github.event.action != 'labeled'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Verify suggestion
+        id: verify
+        run: |
+          set +e
+          python scripts/catalog.py verify-issue \
+            --event "$GITHUB_EVENT_PATH" \
+            --check-urls \
+            --smoke-test > suggestion-result.json
+          result=$?
+          set -e
+          echo "status=$(jq -r .status suggestion-result.json)" >> "$GITHUB_OUTPUT"
+          echo "needs_scraper=$(jq -r .needs_scraper suggestion-result.json)" >> "$GITHUB_OUTPUT"
+          echo "result=$result" >> "$GITHUB_OUTPUT"
+      - name: Apply moderation labels
+        run: |
+          for label in company-status:approved company-status:rejected company-status:disabled; do
+            gh label create "$label" --repo "$GITHUB_REPOSITORY" --force \
+              --color 5319E7 --description "Maintainer-controlled company decision"
+          done
+          for label in company-status:needs-info company-status:verified needs-scraper; do
+            gh label create "$label" --repo "$GITHUB_REPOSITORY" --force \
+              --color BFDADC --description "Company suggestion moderation state"
+            gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label "$label" || true
+          done
+          if [ "$STATUS" = "verified" ]; then
+            gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --add-label "company-status:verified"
+          else
+            gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --add-label "company-status:needs-info"
+          fi
+          if [ "$NEEDS_SCRAPER" = "true" ]; then
+            gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --add-label "needs-scraper"
+          fi
+          gh issue edit "$ISSUE" --repo "$GITHUB_REPOSITORY" --remove-label "needs-triage" || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          STATUS: ${{ steps.verify.outputs.status }}
+          NEEDS_SCRAPER: ${{ steps.verify.outputs.needs_scraper }}
+          ISSUE: ${{ github.event.issue.number }}
+      - name: Publish verification result
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          summary=$(jq -r '
+            if (.findings | length) == 0 then
+              "Automated verification passed. A maintainer may approve this suggestion."
+            else
+              "Automated verification status: **" + .status + "**\n\n" +
+              ([.findings[] | "- `" + .code + "`: " + .message] | join("\n"))
+            end' suggestion-result.json)
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" --body "$summary"
+      - name: Create scraper-support issue
+        if: steps.verify.outputs.needs_scraper == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          marker="Source suggestion: #$ISSUE"
+          existing=$(gh issue list --repo "$GITHUB_REPOSITORY" --state all \
+            --search "\"$marker\" in:body" --json number --jq 'length')
+          if [ "$existing" = "0" ]; then
+            gh issue create --repo "$GITHUB_REPOSITORY" \
+              --title "Add scraper support for company suggestion #$ISSUE" \
+              --label enhancement \
+              --body "Implement or map the ATS required by company suggestion #$ISSUE.\n\n$marker"
+          fi
+
+  approve:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'company-suggestion') &&
+      github.event.action == 'labeled' &&
+      github.event.label.name == 'company-status:approved'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Require production database configuration
+        run: test -n "$DATABASE_URL"
+      - name: Verify and sync approved company
+        run: |
+          python scripts/catalog.py approve-issue \
+            --event "$GITHUB_EVENT_PATH" \
+            --actor "$GITHUB_ACTOR" \
+            --check-urls \
+            --smoke-test
+      - name: Record approval on the suggestion
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ISSUE: ${{ github.event.issue.number }}
+        run: |
+          gh issue comment "$ISSUE" --repo "$GITHUB_REPOSITORY" \
+            --body "Approved by @$GITHUB_ACTOR and synced idempotently to PostgreSQL. It will enter the next crawler run."
+
+  record-decision:
+    if: >-
+      contains(github.event.issue.labels.*.name, 'company-suggestion') &&
+      github.event.action == 'labeled' &&
+      contains(fromJSON('["company-status:rejected","company-status:disabled"]'),
+      github.event.label.name)
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: ${{ secrets.SUPABASE_DATABASE_URL }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - name: Record maintainer decision
+        env:
+          STATUS_LABEL: ${{ github.event.label.name }}
+        run: |
+          test -n "$DATABASE_URL"
+          status="${STATUS_LABEL#company-status:}"
+          python scripts/catalog.py record-decision \
+            --event "$GITHUB_EVENT_PATH" \
+            --status "$status" \
+            --actor "$GITHUB_ACTOR"

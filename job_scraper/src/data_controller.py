@@ -13,6 +13,7 @@ from pathlib import Path
 from urllib.parse import quote, urlparse
 from urllib.request import urlopen
 from crawler_logger import CrawlerLogger
+from company_catalog import AtsCatalog, normalize_name, normalize_url
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -81,30 +82,29 @@ class DataController:
             raise ValueError("YAML catalog must contain a companies list")
 
         ats_path = Path(__file__).resolve().parents[2] / 'catalog' / 'ats.yaml'
-        ats_payload = yaml.safe_load(ats_path.read_text(encoding='utf-8')) or {}
-        supported_ats = {str(value).strip() for value in ats_payload.get('ats', [])}
+        ats_catalog = AtsCatalog.load(ats_path)
 
         rows = []
         seen_sources = set()
         for index, record in enumerate(records, start=1):
             if not isinstance(record, dict):
                 raise ValueError(f"Company entry {index} must be an object")
-            name = str(record.get('name', '')).strip()
-            career_page = str(record.get('career_page', '')).strip()
-            label = str(record.get('ats', '')).strip()
-            if not name or not career_page or not label:
+            name = normalize_name(record.get('name', ''))
+            career_page = normalize_url(record.get('career_page', ''))
+            website = normalize_url(record.get('website', '')) if record.get('website') else ''
+            raw_label = str(record.get('ats', '')).strip()
+            label = ats_catalog.resolve(raw_label)
+            if not name or not career_page or not raw_label:
                 raise ValueError(f"Company entry {index} needs name, career_page, and ats")
-            if label not in supported_ats:
-                raise ValueError(f"Company entry {index} uses unsupported ATS label: {label}")
-            if not career_page.startswith(('http://', 'https://')):
-                raise ValueError(f"Company entry {index} has an invalid career_page URL")
+            if not label:
+                raise ValueError(f"Company entry {index} uses unsupported ATS label: {raw_label}")
             source_key = (name.casefold(), career_page.rstrip('/').casefold())
             if source_key in seen_sources:
                 raise ValueError(f"Duplicate company source at entry {index}: {name}")
             seen_sources.add(source_key)
             rows.append({
                 'Name': name,
-                'Website': str(record.get('website', '')).strip(),
+                'Website': website,
                 'Career Page': career_page,
                 'Description': str(record.get('description', '')).strip(),
                 'Label': label,

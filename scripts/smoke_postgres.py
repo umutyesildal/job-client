@@ -26,7 +26,8 @@ def main() -> int:
     storage.migrate()
     with storage.connect() as connection, connection.cursor() as cursor:
         cursor.execute(
-            "TRUNCATE jobs, job_url_aliases, job_fingerprints, crawl_runs RESTART IDENTITY CASCADE"
+            "TRUNCATE company_suggestion_events, company_suggestions, career_sources, companies, "
+            "jobs, job_url_aliases, job_fingerprints, crawl_runs RESTART IDENTITY CASCADE"
         )
 
     today = datetime.now(ZoneInfo("Europe/Berlin")).date().isoformat()
@@ -60,6 +61,37 @@ def main() -> int:
     stats = storage.upsert_jobs(rows)
     assert (stats.inserted, stats.updated, stats.skipped) == (1, 1, 1), stats
 
+    suggestion = {
+        "name": "München Labs",
+        "website": "https://example.com",
+        "career_page": "https://example.com/careers",
+        "ats": "greenhouse",
+        "berlin_evidence": "https://example.com/jobs/berlin",
+        "notes": "Disposable smoke-test suggestion",
+    }
+    storage.approve_company_suggestion(
+        suggestion,
+        source_issue=999001,
+        source_url="https://github.com/example/repo/issues/999001",
+        actor="smoke-test",
+    )
+    storage.disable_company_suggestion(
+        suggestion,
+        source_issue=999001,
+        source_url="https://github.com/example/repo/issues/999001",
+        actor="smoke-test",
+    )
+    with storage.connect() as connection, connection.cursor() as cursor:
+        cursor.execute("SELECT active FROM companies WHERE name = %s", ("München Labs",))
+        assert cursor.fetchone()[0] is False
+        cursor.execute("SELECT count(*) FROM jobs")
+        assert cursor.fetchone()[0] == 1, "Disabling a company must preserve historical jobs"
+        cursor.execute(
+            "SELECT array_agg(status ORDER BY id) FROM company_suggestion_events "
+            "WHERE suggestion_id = (SELECT id FROM company_suggestions WHERE source_issue = 999001)"
+        )
+        assert cursor.fetchone()[0] == ["approved", "disabled"]
+
     alias_stats = storage.upsert_jobs(pd.DataFrame([{
         **common,
         "Job Title": "Software Engineer II",
@@ -92,7 +124,10 @@ def main() -> int:
         assert cursor.fetchone()[0] == 0
         cursor.execute("RESET ROLE")
 
-    print("PostgreSQL smoke: migration, semantic dedup, URL mutation, expiry skip, and 30-day deletion passed")
+    print(
+        "PostgreSQL smoke: migrations, moderated company sync, historical-job preservation, "
+        "semantic dedup, URL mutation, expiry skip, and 30-day deletion passed"
+    )
     return 0
 
 

@@ -5,3 +5,4 @@ companies:
     ats: greenhouse
     description: Replace this example with a real Berlin employer.
     active: true
+    verified_at: 2026-07-16T00:00:00Z

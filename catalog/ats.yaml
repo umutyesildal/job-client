@@ -1,26 +1,36 @@
-# Canonical labels accepted by the current crawler. Aliases remain an internal
-# compatibility detail in JobCrawlerController.SCRAPER_MAP.
+# Canonical labels accepted by the current crawler. Human-facing and legacy
+# aliases normalize to these stable identifiers.
 ats:
-  - amazon
-  - ashby
-  - bamboohr
-  - capgemini
-  - consider
-  - gem
-  - getro
-  - greenhouse
-  - hibob
-  - join
-  - lever
-  - lingoda
-  - linkedin
-  - microsoft
-  - paypal
-  - personio
-  - recruitee
-  - rippling
-  - smartrecruiters
-  - stripe
-  - traderepublic
-  - wipro
-  - workable
+  - id: amazon
+    aliases: [amazonjobs, Amazon Jobs]
+  - id: ashby
+    aliases: [ashbyhq, Ashby]
+  - id: bamboohr
+    aliases: [BambooHR]
+  - id: capgemini
+  - id: consider
+  - id: gem
+  - id: getro
+  - id: greenhouse
+  - id: hibob
+    aliases: [bob, HiBob]
+  - id: join
+    aliases: [JOIN]
+  - id: lever
+  - id: lingoda
+    aliases: [pinpointhq]
+  - id: linkedin
+  - id: microsoft
+    aliases: [Microsoft Careers]
+  - id: paypal
+    aliases: [eightfold, Eightfold]
+  - id: personio
+  - id: recruitee
+  - id: rippling
+  - id: smartrecruiters
+    aliases: [SmartRecruiters]
+  - id: stripe
+    aliases: [Stripe Jobs]
+  - id: traderepublic
+  - id: wipro
+  - id: workable
