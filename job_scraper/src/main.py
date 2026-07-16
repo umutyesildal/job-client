@@ -32,8 +32,8 @@ def main():
     
     parser = argparse.ArgumentParser(description='Job Crawler - Scrape jobs from multiple ATS platforms')
     parser.add_argument('input', nargs='?', default='../../data/job_search.csv',
-                    help='Input CSV file, Google Sheet URL, or Google spreadsheet ID')
-    parser.add_argument('-t', '--input-type', choices=['csv', 'sheets'], default='csv',
+                    help='Company input CSV or legacy Google Sheet URL/ID; ignored for postgres input')
+    parser.add_argument('-t', '--input-type', choices=['csv', 'yaml', 'sheets', 'postgres'], default='csv',
                     help='Input source type (default: csv)')
     parser.add_argument('--input-worksheet',
                     help='Worksheet name to read when using Google Sheets input')
@@ -59,7 +59,12 @@ def main():
     # Load data
     try:
         CrawlerLogger.info_message(f"📥 Loading from: {args.input}")
-        if args.input_type == 'sheets':
+        if args.input_type == 'postgres':
+            from postgres_storage import PostgresJobStorage
+            df = PostgresJobStorage().load_companies()
+        elif args.input_type == 'yaml':
+            df = data_ctrl.load_data_from_yaml(args.input)
+        elif args.input_type == 'sheets':
             df = data_ctrl.load_data_from_google_sheet(args.input, args.input_worksheet)
         else:
             df = data_ctrl.load_data_from_csv(args.input)

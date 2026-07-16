@@ -7,7 +7,8 @@
 - LinkedIn queries: Engineer-based searches across the included tech disciplines; generic Developer and unbounded Engineer searches are excluded.
 - Classification: performed for each incoming job during publishing, not by a
   one-off raw-file analysis step.
-- Source of truth: normalized Google Sheets rows produced by Python.
+- Source of truth: normalized PostgreSQL rows produced by Python. Supabase is
+  the hosted provider; the contract remains portable PostgreSQL.
 - Public UI: `All Jobs` and `New Today`, with search plus engineering area,
   level, and work-style filters.
 - Legacy UI: frozen until Next.js parity is confirmed, then retired.
@@ -16,7 +17,7 @@
 
 1. Create `codex/daily-berlin-jobs-refactor` without dropping existing local
    changes.
-2. Add the versioned engineering taxonomy and normalized Sheets columns.
+2. Add the versioned engineering taxonomy and normalized public columns.
 3. Remove duplicate classification rules from Next.js.
 4. Simplify the public controls and job-row metadata.
 5. Enforce the data contract in tests and the GitHub Actions verification step.
@@ -53,6 +54,5 @@
   locale/runtime-dependent text and date sorting. The public list now uses
   deterministic text comparison and explicit date parsing.
 
-The currently published worksheets predate the versioned taxonomy. Run the
-branch workflow once before promoting the matching `engineering-v2` web build
-so filter options are populated from normalized Sheets columns.
+The original Sheets rollout record above is historical. The current migration
+and rollback procedure lives in `docs/DATABASE.md`.

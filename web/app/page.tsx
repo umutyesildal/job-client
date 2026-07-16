@@ -1,5 +1,5 @@
 import { JobsBoard } from "@/components/jobs-board";
-import { getJobsSnapshot } from "@/lib/sheets";
+import { getJobsSnapshot } from "@/lib/postgres";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

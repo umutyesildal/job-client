@@ -1,11 +1,12 @@
 """
-Post-process collected jobs for Google Sheets outputs.
+Post-process collected jobs for canonical PostgreSQL or legacy Sheets outputs.
 
 Creates the canonical Daily Berlin Jobs datasets. Every incoming row is
 classified before the engineering-only public collections are written.
 """
 
 import argparse
+import os
 import re
 import unicodedata
 from datetime import date, datetime, timedelta
@@ -109,7 +110,7 @@ def load_jobs(path: Path) -> pd.DataFrame:
 
 
 def classify_jobs(df: pd.DataFrame) -> pd.DataFrame:
-    """Analyze every incoming job and attach the canonical Sheets fields."""
+    """Analyze every incoming job and attach the canonical public fields."""
     classified = DataController().normalize_jobs_dataframe(df.fillna(""))
     classification_rows = [classify_job(row) for row in classified.to_dict(orient="records")]
     for column in ["Role", "Level", "Work Mode", "Tech Stack", "Keywords", "Classification Version"]:
@@ -384,6 +385,14 @@ def main() -> int:
     parser.add_argument("--no-update-baseline", action="store_true",
                         help="Do not replace the previous pulled jobs baseline after a successful run")
     parser.add_argument("--skip-upload", action="store_true", help="Only write local CSV files")
+    parser.add_argument(
+        "--storage-backend",
+        choices=["sheets", "postgres", "dual"],
+        default=os.getenv("STORAGE_BACKEND", "sheets"),
+        help="Canonical publisher; dual temporarily writes PostgreSQL and Sheets",
+    )
+    parser.add_argument("--retention-days", type=int, default=30,
+                        help="Delete canonical job rows older than this many days")
     parser.add_argument("--skip-daily-upload", action="store_true", help="Do not update the daily-new worksheet")
     parser.add_argument("--include-linkedin-daily", action="store_true",
                         help="Append recent LinkedIn engineering searches before filtering/uploading")
@@ -439,9 +448,14 @@ def main() -> int:
     current_df = classify_jobs(current_df)
 
     all_output = Path(args.all_output)
+    current_published_df = filter_published_jobs(current_df)
     previous_published_path = all_output if all_output.exists() else Path(args.related_output)
     previous_published_df = load_jobs(previous_published_path) if previous_published_path.exists() else None
-    published_df = merge_published_jobs(current_df, previous_published_df)
+    if args.storage_backend == "sheets":
+        published_df = merge_published_jobs(current_published_df, previous_published_df)
+    else:
+        # PostgreSQL owns the rolling history. The crawl artifact stays a single-run snapshot.
+        published_df = current_published_df
     related_df = filter_related_jobs(current_df)
     daily_new_df = filter_recent_published_jobs(published_df)
 
@@ -461,11 +475,31 @@ def main() -> int:
         print("Previous baseline: none found")
     print(f"New today (today + yesterday): {len(daily_new_df)} -> {daily_output}")
 
+    postgres_ok = True
+    if args.storage_backend in {"postgres", "dual"} and not args.skip_upload:
+        try:
+            from postgres_storage import PostgresJobStorage
+
+            storage = PostgresJobStorage(retention_days=args.retention_days)
+            storage.migrate()
+            stats = storage.upsert_jobs(published_df)
+            print(
+                "PostgreSQL publish: "
+                f"{stats.inserted} inserted, {stats.updated} updated, "
+                f"{stats.skipped} expired skipped, {stats.deleted} old rows deleted"
+            )
+        except Exception as exc:
+            postgres_ok = False
+            print(f"PostgreSQL publish failed: {exc}")
+
     if args.skip_upload:
         if not args.no_update_baseline and previous_path:
             save_csv(current_df, previous_path)
             print(f"Updated baseline: {previous_path}")
         return 0
+
+    if args.storage_backend == "postgres":
+        return 0 if postgres_ok else 1
 
     all_uploaded = upload_to_sheet(published_df, args.spreadsheet, args.all_worksheet, 0)
     related_uploaded = upload_to_sheet(
@@ -483,7 +517,7 @@ def main() -> int:
             daily_max_upload_lines
         )
 
-    if all_uploaded and related_uploaded and daily_uploaded:
+    if postgres_ok and all_uploaded and related_uploaded and daily_uploaded:
         if not args.no_update_baseline and previous_path:
             save_csv(current_df, previous_path)
             print(f"Updated baseline: {previous_path}")

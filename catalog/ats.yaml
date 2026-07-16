@@ -1,0 +1,26 @@
+# Canonical labels accepted by the current crawler. Aliases remain an internal
+# compatibility detail in JobCrawlerController.SCRAPER_MAP.
+ats:
+  - amazon
+  - ashby
+  - bamboohr
+  - capgemini
+  - consider
+  - gem
+  - getro
+  - greenhouse
+  - hibob
+  - join
+  - lever
+  - lingoda
+  - linkedin
+  - microsoft
+  - paypal
+  - personio
+  - recruitee
+  - rippling
+  - smartrecruiters
+  - stripe
+  - traderepublic
+  - wipro
+  - workable

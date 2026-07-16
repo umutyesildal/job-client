@@ -56,7 +56,7 @@ export function AdminPanel() {
       <a href="/" className="back-link">← Job board</a>
       <form className="admin-card login-card" onSubmit={login}>
         <span className="eyebrow">Private access</span><h1>Daily update admin</h1>
-        <p>Sign in to run the crawler and publish the latest Sheets snapshot.</p>
+        <p>Sign in to run the crawler and publish the latest database snapshot.</p>
         <label>Admin password<input type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></label>
         <button disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>
         {message && <p className="error">{message}</p>}
@@ -70,7 +70,7 @@ export function AdminPanel() {
       <a href="/" className="back-link">← Job board</a>
       <section className="admin-card">
         <span className="eyebrow">GitHub Actions worker</span><h1>Daily update</h1>
-        <p>The crawler runs outside Vercel and publishes the canonical Google Sheets datasets.</p>
+        <p>The crawler runs outside Vercel and publishes the canonical PostgreSQL dataset.</p>
         <div className="progress-copy"><strong>{status?.step ?? "Ready"}</strong><span>{status?.progress ?? 0}%</span></div>
         <div className="progress"><span style={{ width: `${status?.progress ?? 0}%` }} /></div>
         <div className="admin-actions">

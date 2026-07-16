@@ -1,68 +1,74 @@
 # Daily Berlin Jobs architecture
 
-## Product boundary
+## Runtime flow
 
-Daily Berlin Jobs currently publishes Berlin tech-engineering roles only. The
-scope includes software, data/AI, platform/cloud, security, mobile, QA, and
-embedded/firmware/robotics engineering. Mechanical, electrical, civil,
-manufacturing, energy, and field/service disciplines remain excluded.
+```mermaid
+flowchart LR
+    W["Next.js on Vercel"] -->|read-only pooled connection| P["Supabase PostgreSQL"]
+    A["Admin route"] -->|workflow dispatch| G["GitHub Actions crawler"]
+    G -->|read companies and write jobs| P
+    G --> R["Ephemeral raw crawl CSV"]
+    R --> T["Python engineering-v2 taxonomy"]
+    T --> P
+```
 
-LinkedIn discovery uses explicit Engineer searches for the included areas. It
-does not use a generic `engineer` query because that would spend the daily query
-budget on disciplines outside the product boundary.
+PostgreSQL is the canonical runtime store. Supabase is the hosted provider, but
+the application uses a standard `DATABASE_URL`, SQL migrations, `psycopg`, and
+`pg`; changing provider does not require a schema rewrite.
 
-## Data flow
+The crawler remains the only classification authority. Next.js reads the
+published `role`, `level`, `work_mode`, `tech_stack`, `keywords`, and
+`classification_version` fields and never recreates taxonomy rules.
 
-1. The crawler collects ATS jobs using the companies configured in `OneSingle`.
-2. The daily LinkedIn collector adds recent engineering-query results.
-3. `post_process_jobs.py` sends every incoming row through
-   `job_taxonomy.py`.
-4. Non-Berlin and non-engineering rows are excluded from the public collection.
-5. Matching rows are deduplicated and written to `All Jobs`.
-6. Jobs posted today or yesterday in `Europe/Berlin` are written to
-   `Daily New Jobs`.
-7. The web reader applies the same today-or-yesterday rule when it reads
-   `Daily New Jobs`, so stale rows disappear even if a scheduled crawl is delayed.
-8. Next.js reads both worksheets on the server and renders their normalized
-   fields.
+## Stored data
 
-The crawler runs in GitHub Actions. Vercel reads Sheets and dispatches the
-workflow; it never runs the crawler itself.
-
-## Published job contract
-
-In addition to the source job columns, every public row contains:
-
-| Column | Meaning |
+| Object | Purpose |
 | --- | --- |
-| `Role` | Engineering area used by the public filter |
-| `Level` | Normalized seniority or `Not specified` |
-| `Work Mode` | `Remote`, `Hybrid`, or `On-site` |
-| `Tech Stack` | Comma-separated technologies derived from job text |
-| `Keywords` | Search terms derived from role, department, and technologies |
-| `Classification Version` | Rule version; currently `engineering-v2` |
+| `companies` | Maintainer-approved companies |
+| `career_sources` | Active ATS/career page configuration |
+| `jobs` | Canonical public jobs from the last 30 days |
+| `job_fingerprints` | Small dedup history without full job payloads |
+| `job_url_aliases` | Every observed canonical URL hash for a fingerprint |
+| `crawl_runs` | Operational counts and failures |
+| `public_jobs` | Rolling 30-day public SQL view |
+| `daily_jobs` | Today and yesterday in Berlin time |
 
-The Python pipeline is the only classification authority. The Next.js app may
-parse these values but must not recreate taxonomy regexes.
+The large raw crawl is an ephemeral build artifact. It is classified and
+filtered before database writes; it is never copied into PostgreSQL.
 
-## Scope changes
+## Deduplication contract
 
-A future expansion must create a new classification version, add tests for the
-new include/exclude boundary, update query inputs deliberately, and validate a
-manual workflow run before the public filters are changed.
+Every publish uses two SHA-256 keys:
 
-## Company catalog contributions
+1. a semantic identity from normalized `company + title + location`;
+2. a canonical URL identity after removing fragments and tracking parameters.
 
-Community company suggestions are intake records, not production crawler
-configuration. They must pass duplicate, URL, ATS, Berlin-scope, and scraper
-checks before a maintainer promotes them into `OneSingle`. The public client
-must never receive Sheets write credentials or write directly to the active
-company list.
+Either key can reconnect a newly crawled row to an existing fingerprint. Every
+observed URL hash remains as an alias, so A-to-B-to-A ATS link changes are also
+caught. Database uniqueness constraints provide a final concurrency guard, and
+the whole publish runs in a transaction.
 
-See `docs/COMPANY_CATALOG.md` for the proposed record and delivery phases.
+The full job row expires after 30 days, based on `posted_at` when known and
+otherwise `first_seen_at`. The compact fingerprint remains, so an old vacancy
+cannot immediately return as a new listing after its full payload is deleted.
 
-## Legacy boundary
+## Access boundaries
 
-`daily_berlin_jobs/` is the previous local stdlib UI. It remains only until
-public and admin parity are confirmed in the deployed Next.js app. No new
-product behavior should be added to it.
+- Vercel receives a pooled, read-oriented connection string; it never exposes
+  it to browser JavaScript.
+- Supabase `anon` and `authenticated` roles have no access to the `public`
+  schema; the browser Data API is not part of this architecture.
+- GitHub Actions receives the crawler writer connection string.
+- Schema migrations are run by a maintainer/workflow connection.
+- Community company suggestions remain GitHub issues or PRs until a maintainer
+  validates and imports them. They never write directly to production.
+
+## Failure and rollback
+
+During cutover, `--storage-backend dual` can publish both PostgreSQL and the
+legacy Sheet for comparison. Compare at least three successful daily runs, then
+switch Vercel reads and the crawler to PostgreSQL. Rollback is a configuration
+change back to the last Sheet deployment while the temporary dual-write window
+is open. After acceptance, archive the Sheet read-only and remove its secrets.
+
+See [DATABASE.md](DATABASE.md) for setup, migration, quotas, and backups.

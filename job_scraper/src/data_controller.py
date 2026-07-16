@@ -68,6 +68,52 @@ class DataController:
         
         return df
 
+    def load_data_from_yaml(self, yaml_path: str) -> pd.DataFrame:
+        """Load and validate the contributor-friendly company catalog."""
+        try:
+            import yaml
+        except ImportError as exc:
+            raise RuntimeError("YAML catalog support requires PyYAML") from exc
+
+        payload = yaml.safe_load(Path(yaml_path).read_text(encoding='utf-8')) or {}
+        records = payload.get('companies')
+        if not isinstance(records, list):
+            raise ValueError("YAML catalog must contain a companies list")
+
+        ats_path = Path(__file__).resolve().parents[2] / 'catalog' / 'ats.yaml'
+        ats_payload = yaml.safe_load(ats_path.read_text(encoding='utf-8')) or {}
+        supported_ats = {str(value).strip() for value in ats_payload.get('ats', [])}
+
+        rows = []
+        seen_sources = set()
+        for index, record in enumerate(records, start=1):
+            if not isinstance(record, dict):
+                raise ValueError(f"Company entry {index} must be an object")
+            name = str(record.get('name', '')).strip()
+            career_page = str(record.get('career_page', '')).strip()
+            label = str(record.get('ats', '')).strip()
+            if not name or not career_page or not label:
+                raise ValueError(f"Company entry {index} needs name, career_page, and ats")
+            if label not in supported_ats:
+                raise ValueError(f"Company entry {index} uses unsupported ATS label: {label}")
+            if not career_page.startswith(('http://', 'https://')):
+                raise ValueError(f"Company entry {index} has an invalid career_page URL")
+            source_key = (name.casefold(), career_page.rstrip('/').casefold())
+            if source_key in seen_sources:
+                raise ValueError(f"Duplicate company source at entry {index}: {name}")
+            seen_sources.add(source_key)
+            rows.append({
+                'Name': name,
+                'Website': str(record.get('website', '')).strip(),
+                'Career Page': career_page,
+                'Description': str(record.get('description', '')).strip(),
+                'Label': label,
+                'Active': 'active' if record.get('active', True) else 'inactive',
+            })
+
+        columns = ['Name', 'Website', 'Career Page', 'Description', 'Label', 'Active']
+        return self.normalize_dataframe(pd.DataFrame(rows, columns=columns, dtype=str))
+
     def load_data_from_google_sheet(
         self,
         sheet_ref: str,
