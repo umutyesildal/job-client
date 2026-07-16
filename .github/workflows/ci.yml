@@ -38,6 +38,7 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install --disable-pip-version-check -r requirements.txt
+      - run: python -m pip install --disable-pip-version-check --no-deps -e .
       - run: python scripts/db.py migrate
       - run: python scripts/db.py doctor
       - run: python scripts/smoke_postgres.py

@@ -1,15 +1,17 @@
-# Job Scraper Engine
+# Daily Jobs Pipeline
 
 Core scraping engine with 23 ATS platform implementations.
 
 ## Architecture
 
 ```
-job_scraper/
+src/daily_jobs/
 ├── scrapers/done/         # 23 working implementations
 ├── scrapers/undone/       # 6 incomplete implementations
 ├── scrapers/template_scraper.py
-└── src/main.py            # Orchestration engine
+├── main.py                # Collection orchestration
+├── post_process_jobs.py   # Classification and publishing
+└── postgres_storage.py    # Canonical PostgreSQL storage
 ```
 
 ## Implementation Status
@@ -52,18 +54,18 @@ Output format:
 
 ```bash
 # From the repository root, crawl companies stored in PostgreSQL
-.venv/bin/python job_scraper/src/main.py -t postgres -l 1
+.venv/bin/python -m daily_jobs.main -t postgres -l 1
 
 # Or use a reviewed local YAML catalog
-.venv/bin/python job_scraper/src/main.py catalog/companies.yaml -t yaml -l 3 -d 0.1
+.venv/bin/python -m daily_jobs.main catalog/companies.yaml -t yaml -l 3 -d 0.1
 
 # Classify, filter, deduplicate, and publish the rolling 30-day collection
-.venv/bin/python job_scraper/src/post_process_jobs.py \
+.venv/bin/python -m daily_jobs.post_process_jobs \
   --storage-backend postgres --retention-days 30
 
 # Add new scraper
-cp scrapers/template_scraper.py scrapers/undone/new_scraper.py
-# Edit implementation, add to SCRAPER_MAP in src/client.py
+cp src/daily_jobs/scrapers/template_scraper.py src/daily_jobs/scrapers/undone/new_scraper.py
+# Edit implementation, then add it to SCRAPER_MAP in src/daily_jobs/client.py
 ```
 
 The raw `all_jobs.csv` is a replaceable single-run snapshot. PostgreSQL owns

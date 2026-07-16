@@ -1,14 +1,9 @@
 """Pull scraped jobs from Google Sheets and save them as local CSV files."""
 
 import argparse
-import sys
 from pathlib import Path
 
-JOB_SCRAPER_ROOT = Path(__file__).resolve().parents[1]
-if str(JOB_SCRAPER_ROOT) not in sys.path:
-    sys.path.insert(0, str(JOB_SCRAPER_ROOT))
-
-from data_controller import DataController
+from .data_controller import DataController
 
 DEFAULT_SPREADSHEET = (
     "https://docs.google.com/spreadsheets/d/"

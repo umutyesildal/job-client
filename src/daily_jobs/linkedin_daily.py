@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import logging
 import re
-import sys
 import unicodedata
 from pathlib import Path
 from typing import Iterable, List
@@ -12,12 +11,8 @@ from urllib.parse import urlencode
 
 import pandas as pd
 
-JOB_SCRAPER_ROOT = Path(__file__).resolve().parents[1]
-if str(JOB_SCRAPER_ROOT) not in sys.path:
-    sys.path.insert(0, str(JOB_SCRAPER_ROOT))
-
-from data_controller import DataController
-from scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
+from .data_controller import DataController
+from .scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
 
 logger = logging.getLogger(__name__)
 

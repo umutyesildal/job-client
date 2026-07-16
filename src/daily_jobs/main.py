@@ -3,13 +3,11 @@ Main Job Crawler Controller
 Reads company data and orchestrates scraping across different ATS platforms
 """
 import os
-import sys
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import logging
 import argparse
-from crawler_logger import CrawlerLogger
-from data_controller import DataController
-from client import JobCrawlerController
+from .crawler_logger import CrawlerLogger
+from .data_controller import DataController
+from .client import JobCrawlerController
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +29,7 @@ def main():
     
     
     parser = argparse.ArgumentParser(description='Job Crawler - Scrape jobs from multiple ATS platforms')
-    parser.add_argument('input', nargs='?', default='../../data/job_search.csv',
+    parser.add_argument('input', nargs='?', default=os.path.join(default_data_dir, 'job_search.csv'),
                     help='Company input CSV or legacy Google Sheet URL/ID; ignored for postgres input')
     parser.add_argument('-t', '--input-type', choices=['csv', 'yaml', 'sheets', 'postgres'], default='csv',
                     help='Input source type (default: csv)')
@@ -60,7 +58,7 @@ def main():
     try:
         CrawlerLogger.info_message(f"📥 Loading from: {args.input}")
         if args.input_type == 'postgres':
-            from postgres_storage import PostgresJobStorage
+            from .postgres_storage import PostgresJobStorage
             df = PostgresJobStorage().load_companies()
         elif args.input_type == 'yaml':
             df = data_ctrl.load_data_from_yaml(args.input)

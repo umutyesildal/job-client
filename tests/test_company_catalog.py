@@ -1,23 +1,16 @@
-import sys
 import tempfile
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-
-SRC_DIR = Path(__file__).resolve().parents[1] / "job_scraper" / "src"
-JOB_SCRAPER_DIR = Path(__file__).resolve().parents[1] / "job_scraper"
-sys.path.insert(0, str(SRC_DIR))
-sys.path.insert(0, str(JOB_SCRAPER_DIR))
-
-from data_controller import DataController  # noqa: E402
-from company_catalog import (  # noqa: E402
+from daily_jobs.company_catalog import (
     AtsCatalog,
     audit_companies,
     normalize_url,
     parse_issue_form,
     verify_suggestion,
 )
+from daily_jobs.data_controller import DataController
 
 
 class CompanyCatalogTests(unittest.TestCase):
@@ -54,7 +47,7 @@ class CompanyCatalogTests(unittest.TestCase):
         self.assertEqual(catalog.resolve("Eightfold"), "paypal")
 
     def test_every_canonical_ats_has_a_scraper(self):
-        from client import JobCrawlerController
+        from daily_jobs.client import JobCrawlerController
 
         catalog = AtsCatalog.load(Path(__file__).resolve().parents[1] / "catalog" / "ats.yaml")
         self.assertTrue(catalog.identifiers().issubset(JobCrawlerController.SCRAPER_MAP))

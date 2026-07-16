@@ -2,18 +2,13 @@
 """Destructive integration smoke test for a disposable local PostgreSQL DB."""
 
 import os
-import sys
 from datetime import datetime
-from pathlib import Path
 from urllib.parse import urlsplit
 from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "job_scraper" / "src"))
-
-from postgres_storage import PostgresJobStorage  # noqa: E402
+from daily_jobs.postgres_storage import PostgresJobStorage
 
 
 def main() -> int:

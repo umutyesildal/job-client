@@ -1,4 +1,3 @@
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -6,11 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 
-SRC_DIR = Path(__file__).resolve().parents[1] / "job_scraper" / "src"
-sys.path.insert(0, str(SRC_DIR.parent))
-sys.path.insert(0, str(SRC_DIR))
-
-from client import JobCrawlerController  # noqa: E402
+from daily_jobs.client import JobCrawlerController
 
 
 class RawSnapshotTests(unittest.TestCase):

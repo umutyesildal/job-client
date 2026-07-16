@@ -84,8 +84,8 @@ and a transaction provide the final concurrency guard.
 After importing company sources into PostgreSQL:
 
 ```bash
-.venv/bin/python job_scraper/src/main.py -t postgres
-.venv/bin/python job_scraper/src/post_process_jobs.py \
+.venv/bin/python -m daily_jobs.main -t postgres
+.venv/bin/python -m daily_jobs.post_process_jobs \
   --storage-backend postgres \
   --retention-days 30 \
   --include-linkedin-daily \

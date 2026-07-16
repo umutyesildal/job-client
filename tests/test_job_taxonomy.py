@@ -1,12 +1,6 @@
-import sys
 import unittest
-from pathlib import Path
 
-
-SRC_DIR = Path(__file__).resolve().parents[1] / "job_scraper" / "src"
-sys.path.insert(0, str(SRC_DIR))
-
-from job_taxonomy import CLASSIFICATION_VERSION, classify_job, classify_role  # noqa: E402
+from daily_jobs.job_taxonomy import CLASSIFICATION_VERSION, classify_job, classify_role
 
 
 class JobTaxonomyTests(unittest.TestCase):

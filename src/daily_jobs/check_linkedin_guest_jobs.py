@@ -2,18 +2,13 @@
 Test script to verify the LinkedIn guest jobs client directly.
 """
 
-import os
-import sys
 import logging
 
 # Set up logging to stdout
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Add parent directories to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
+from .scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
 
 def test_collect():
     # We will query LinkedIn jobs for "Helsing" in Germany using the guest search URL

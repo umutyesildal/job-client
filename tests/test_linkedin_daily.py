@@ -1,14 +1,13 @@
-import sys
 import unittest
-from pathlib import Path
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 
-SRC_DIR = Path(__file__).resolve().parents[1] / "job_scraper" / "src"
-sys.path.insert(0, str(SRC_DIR))
-
-from linkedin_daily import DEFAULT_LINKEDIN_KEYWORDS, build_linkedin_search_url, collect_daily_linkedin_jobs  # noqa: E402
+from daily_jobs.linkedin_daily import (
+    DEFAULT_LINKEDIN_KEYWORDS,
+    build_linkedin_search_url,
+    collect_daily_linkedin_jobs,
+)
 
 
 class LinkedInDailyTests(unittest.TestCase):
@@ -46,7 +45,7 @@ class LinkedInDailyTests(unittest.TestCase):
             "ATS": "LinkedIn",
         }
 
-        with patch("linkedin_daily.LinkedInGuestJobsClient") as client_class:
+        with patch("daily_jobs.linkedin_daily.LinkedInGuestJobsClient") as client_class:
             client = client_class.return_value
             client.scrape_jobs.side_effect = [[duplicate_job], [duplicate_job, unique_job]]
 

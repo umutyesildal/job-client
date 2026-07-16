@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=75"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "daily-berlin-jobs"
+version = "0.1.0"
+description = "Daily Berlin Jobs collection and publishing pipeline"
+requires-python = ">=3.12"
+
+[project.scripts]
+daily-jobs-crawl = "daily_jobs.main:main"
+daily-jobs-publish = "daily_jobs.post_process_jobs:main"
+daily-jobs-linkedin = "daily_jobs.linkedin_daily:main"
+daily-jobs-query-linkedin = "daily_jobs.query_linkedin:main"
+daily-jobs-pull-sheets = "daily_jobs.pull_from_sheets:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

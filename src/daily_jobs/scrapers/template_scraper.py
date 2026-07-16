@@ -1,22 +1,20 @@
 """
 Template ATS Scraper
-Replace [ATS_NAME] with the actual ATS platform name (e.g., Lever, Workday, etc.)
+Copy this file and rename TemplateScraper for the target ATS platform.
 """
 
 import requests
 import logging
 from typing import List, Dict
-from bs4 import BeautifulSoup
-
 logger = logging.getLogger(__name__)
 
 
-class [ATS_NAME]Scraper:
+class TemplateScraper:
     """
-    Scraper for [ATS_NAME] ATS platform
+    Starting point for a new ATS scraper.
     
     Usage:
-        scraper = [ATS_NAME]Scraper()
+        scraper = TemplateScraper()
         jobs = scraper.scrape_jobs(url, company_name, company_description, label)
     """
     
@@ -35,7 +33,7 @@ class [ATS_NAME]Scraper:
     
     def scrape_jobs(self, url: str, company_name: str, company_description: str = '', label: str = '') -> List[Dict]:
         """
-        Scrape jobs from [ATS_NAME] career page
+        Scrape jobs from an ATS career page.
         
         Args:
             url: Career page URL
@@ -117,7 +115,7 @@ class [ATS_NAME]Scraper:
                 'Company Description': company_description,
                 'Remote': 'Yes' if job_data.get('remote') else 'No',  # TODO: Map to actual field
                 'Label': label,
-                'ATS': '[ATS_NAME]'
+                'ATS': 'template'
             }
             return job
         except Exception as e:

@@ -6,6 +6,7 @@ setup:
 	docker compose up -d postgres
 	@test -x .venv/bin/python || python3 -m venv .venv
 	.venv/bin/pip install -r requirements.txt
+	.venv/bin/pip install --no-deps -e .
 	.venv/bin/python scripts/db.py migrate
 	npm --prefix web ci
 
