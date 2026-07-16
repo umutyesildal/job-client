@@ -163,7 +163,7 @@ export function JobsBoard({ snapshot }: { snapshot: JobsSnapshot }) {
       <footer className="site-footer">
         <span>Daily Berlin Jobs · Engineering roles updated daily.</span>
         <nav aria-label="Creator links">
-          <a href="https://github.com/umutyesildal/job-client/issues/new?template=company_suggestion.yml" target="_blank" rel="noreferrer">Suggest a company</a>
+          <a href="https://github.com/umutyesildal/daily-berlin-jobs/issues/new?template=company_suggestion.yml" target="_blank" rel="noreferrer">Suggest a company</a>
           <a className="admin-footer-link" href="/admin" aria-label="Admin">Admin</a>
         </nav>
       </footer>

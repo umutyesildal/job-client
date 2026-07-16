@@ -1,4 +1,4 @@
-.PHONY: setup dev test doctor migrate catalog-check
+.PHONY: setup dev test doctor migrate catalog-check catalog-audit
 
 setup:
 	@test -f .env || cp .env.example .env
@@ -20,7 +20,10 @@ doctor:
 	.venv/bin/python scripts/db.py doctor
 
 catalog-check:
-	.venv/bin/python -c "import sys; sys.path.insert(0, 'job_scraper/src'); from data_controller import DataController; print(f'Valid companies: {len(DataController().load_data_from_yaml(\"catalog/companies.yaml\"))}')"
+	.venv/bin/python scripts/catalog.py audit catalog/companies.yaml
+
+catalog-audit:
+	.venv/bin/python scripts/catalog.py audit catalog/companies.yaml --check-urls
 
 test:
 	.venv/bin/python -m unittest discover -s tests -v

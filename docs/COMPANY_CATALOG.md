@@ -41,7 +41,16 @@ flowchart LR
     Q -->|needs info or rejected| I
 ```
 
-The first release uses a structured GitHub issue form as the moderation queue.
+The structured GitHub issue form is the moderation queue. The
+`company-suggestion` workflow validates new and edited suggestions, publishes
+the result back to the issue, and applies a stable status label:
+
+- `company-status:needs-info`
+- `company-status:verified`
+- `company-status:approved`
+- `company-status:rejected`
+- `company-status:disabled`
+
 A native website form can replace the intake surface later, but it must use the
 same validation and approval states.
 
@@ -75,6 +84,60 @@ Before approval, a suggestion must:
 Unknown ATS suggestions are still valuable. They should create a separate
 scraper-support task instead of being silently activated with the wrong label.
 
+The verifier also rejects embedded URL credentials, non-HTTP(S) URLs, private
+or non-public network targets, duplicate company domains, and duplicate careers
+URLs. URL checks and scraper smoke tests run without database credentials.
+
+## Catalog audit
+
+Run the committed catalog audit without production credentials:
+
+```bash
+.venv/bin/python scripts/catalog.py audit catalog/companies.yaml
+```
+
+Add live public-URL health checks from a trusted maintainer environment:
+
+```bash
+.venv/bin/python scripts/catalog.py audit \
+  catalog/companies.yaml \
+  --check-urls \
+  --output catalog-audit.json
+```
+
+The JSON report contains only normalized public catalog fields, status values,
+and actionable findings. It never serializes database URLs, request headers,
+service-account data, or environment variables. Statuses are `supported`,
+`unsupported`, `stale`, `failing`, `unverified`, and `disabled`.
+
+Canonical ATS identifiers and their human-facing or legacy aliases live in
+`catalog/ats.yaml`. CI verifies that every canonical identifier maps to an
+implemented scraper.
+
+Maintainers can export the PostgreSQL catalog to a reviewed, non-secret fixture:
+
+```bash
+DATABASE_URL=postgresql://... \
+  .venv/bin/python scripts/catalog.py export-postgres \
+  --output catalog/companies.yaml
+```
+
+## Moderation and production sync
+
+Opening or editing a suggestion can only produce verification comments and
+labels. It cannot access the production database.
+
+When a suggestion is `verified`, a maintainer may add the
+`company-status:approved` label. The approval job repeats URL and scraper
+verification, applies migrations, upserts the company and career source
+idempotently, and records the source issue, actor, and timestamps in
+`company_suggestions` and `company_suggestion_events`.
+
+Adding `company-status:rejected` records a rejected decision. Adding
+`company-status:disabled` records the decision and deactivates the matching
+company and career source. Disabling a source does not delete its historical
+jobs.
+
 ## Guardrails
 
 - Anonymous submissions never write directly to production tables.
@@ -94,17 +157,17 @@ scraper-support task instead of being silently activated with the wrong label.
 
 ### Phase 2 — catalog health
 
-- export a reviewed, non-sensitive catalog fixture from PostgreSQL;
-- normalize ATS aliases into stable identifiers;
-- add duplicate, URL, supported-scraper, and stale-source audits;
-- report active, failing, unsupported, and unverified company counts.
+- [x] export a reviewed, non-sensitive catalog fixture from PostgreSQL;
+- [x] normalize ATS aliases into stable identifiers;
+- [x] add duplicate, URL, supported-scraper, and stale-source audits;
+- [x] report active, failing, unsupported, and unverified company counts.
 
 ### Phase 3 — moderated automation
 
-- add a `Company Suggestions` queue or repository-backed catalog;
-- validate suggestions automatically;
-- let maintainers approve and sync verified records into PostgreSQL;
-- expose status back to the original suggestion.
+- [x] use structured GitHub issues as the `Company Suggestions` queue;
+- [x] validate suggestions automatically;
+- [x] let maintainers approve and sync verified records into PostgreSQL;
+- [x] expose status back to the original suggestion.
 
 ### Phase 4 — native public form
 

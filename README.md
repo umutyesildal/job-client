@@ -167,6 +167,19 @@ Company suggestions are intake records: a maintainer checks duplicates, URL,
 ATS support, Berlin relevance, and crawler compatibility before importing them.
 Public submissions never write directly to production.
 
+```bash
+# Read-only catalog audit
+.venv/bin/python scripts/catalog.py audit catalog/companies.yaml
+
+# Trusted maintainer audit with public URL checks
+.venv/bin/python scripts/catalog.py audit catalog/companies.yaml --check-urls
+```
+
+GitHub issues labeled `company-suggestion` are validated automatically. Only a
+maintainer-applied `company-status:approved` label can trigger an idempotent
+PostgreSQL sync. Rejected and disabled decisions retain an audit trail, and
+disabling a company preserves historical jobs.
+
 ## Security and license
 
 Report vulnerabilities according to [SECURITY.md](SECURITY.md). Do not commit

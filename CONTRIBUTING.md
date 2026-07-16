@@ -62,5 +62,23 @@ classification version when the public boundary changes, and document the
 expected migration. A green CI run does not authorize a production database
 write.
 
+## Company catalog contributions
+
+Use the “Suggest a company” issue form for new sources. The automated verifier
+checks public URLs, duplicate domains and careers URLs, ATS support, Berlin
+evidence, and scraper compatibility. It cannot write to production.
+
+Maintainers review suggestions with these status labels:
+
+- `company-status:needs-info`
+- `company-status:verified`
+- `company-status:approved`
+- `company-status:rejected`
+- `company-status:disabled`
+
+Only a maintainer should apply approval, rejection, or disabled labels.
+Approval re-verifies the source before syncing it to PostgreSQL. Run
+`make catalog-check` for catalog changes.
+
 By contributing, you agree that your contribution is licensed under the MIT
 License included in this repository.

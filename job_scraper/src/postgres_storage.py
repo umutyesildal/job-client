@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import os
 import re
 import unicodedata
@@ -145,27 +146,205 @@ class PostgresJobStorage:
         rows = dataframe.fillna("").to_dict(orient="records")
         with self.connect() as connection, connection.cursor() as cursor:
             for row in rows:
+                active_value = row.get("Active", row.get("active", True))
+                active = (
+                    active_value
+                    if isinstance(active_value, bool)
+                    else str(active_value).strip().casefold()
+                    not in {"false", "0", "no", "inactive", "disabled"}
+                )
                 cursor.execute(
                     """
                     INSERT INTO companies(name, website, description, active)
-                    VALUES (%s, NULLIF(%s, ''), NULLIF(%s, ''), true)
+                    VALUES (%s, NULLIF(%s, ''), NULLIF(%s, ''), %s)
                     ON CONFLICT (name) DO UPDATE SET website = EXCLUDED.website,
-                        description = EXCLUDED.description, active = true, updated_at = now()
+                        description = EXCLUDED.description, active = EXCLUDED.active, updated_at = now()
                     RETURNING id
                     """,
-                    (row.get("Name", ""), row.get("Website", ""), row.get("Description", "")),
+                    (
+                        row.get("Name", ""),
+                        row.get("Website", ""),
+                        row.get("Description", ""),
+                        active,
+                    ),
                 )
                 company_id = cursor.fetchone()[0]
                 cursor.execute(
                     """
                     INSERT INTO career_sources(company_id, career_page, ats_label, active)
-                    VALUES (%s, %s, %s, true)
+                    VALUES (%s, %s, %s, %s)
                     ON CONFLICT (company_id, career_page) DO UPDATE SET
-                        ats_label = EXCLUDED.ats_label, active = true, updated_at = now()
+                        ats_label = EXCLUDED.ats_label, active = EXCLUDED.active, updated_at = now()
                     """,
-                    (company_id, row.get("Career Page", ""), row.get("Label", "")),
+                    (
+                        company_id,
+                        row.get("Career Page", ""),
+                        row.get("Label", ""),
+                        active,
+                    ),
                 )
         return len(rows)
+
+    def record_company_suggestion(
+        self,
+        suggestion: dict,
+        *,
+        source_issue: int,
+        source_url: str,
+        status: str,
+        actor: str = "",
+        submitted_at: Optional[datetime] = None,
+        findings: Optional[list[dict]] = None,
+    ) -> int:
+        submitted_at = submitted_at or datetime.now(timezone.utc)
+        findings = findings or []
+        last_error = "; ".join(
+            finding.get("message", "")
+            for finding in findings
+            if finding.get("severity") == "error"
+        )
+        verified_at = datetime.now(timezone.utc) if status in {"verified", "approved"} else None
+        decided_at = datetime.now(timezone.utc) if status in {"approved", "rejected", "disabled"} else None
+        with self.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                INSERT INTO company_suggestions(
+                    source_issue, source_url, name, website, career_page, ats_label,
+                    berlin_evidence, status, submitted_at, verified_at, decided_at,
+                    notes, last_error
+                ) VALUES (%s, %s, %s, %s, %s, NULLIF(%s, ''), %s, %s, %s, %s, %s,
+                          NULLIF(%s, ''), NULLIF(%s, ''))
+                ON CONFLICT (source_issue) DO UPDATE SET
+                    source_url = EXCLUDED.source_url,
+                    name = EXCLUDED.name,
+                    website = EXCLUDED.website,
+                    career_page = EXCLUDED.career_page,
+                    ats_label = EXCLUDED.ats_label,
+                    berlin_evidence = EXCLUDED.berlin_evidence,
+                    status = EXCLUDED.status,
+                    verified_at = COALESCE(EXCLUDED.verified_at, company_suggestions.verified_at),
+                    decided_at = COALESCE(EXCLUDED.decided_at, company_suggestions.decided_at),
+                    notes = EXCLUDED.notes,
+                    last_error = EXCLUDED.last_error,
+                    updated_at = now()
+                RETURNING id
+                """,
+                (
+                    source_issue,
+                    source_url,
+                    suggestion.get("name", ""),
+                    suggestion.get("website", ""),
+                    suggestion.get("career_page", ""),
+                    suggestion.get("ats", ""),
+                    suggestion.get("berlin_evidence", ""),
+                    status,
+                    submitted_at,
+                    verified_at,
+                    decided_at,
+                    suggestion.get("notes", ""),
+                    last_error,
+                ),
+            )
+            suggestion_id = cursor.fetchone()[0]
+            cursor.execute(
+                """
+                INSERT INTO company_suggestion_events(suggestion_id, status, actor, detail)
+                VALUES (%s, %s, NULLIF(%s, ''), %s::jsonb)
+                """,
+                (suggestion_id, status, actor, json.dumps({"findings": findings})),
+            )
+        return suggestion_id
+
+    def approve_company_suggestion(
+        self,
+        suggestion: dict,
+        *,
+        source_issue: int,
+        source_url: str,
+        actor: str,
+        submitted_at: Optional[datetime] = None,
+    ) -> int:
+        with self.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                SELECT s.source_issue
+                FROM companies c
+                LEFT JOIN career_sources cs ON cs.company_id = c.id
+                LEFT JOIN company_suggestions s
+                  ON s.name = c.name AND s.status = 'approved'
+                WHERE lower(COALESCE(c.website, '')) = lower(%s)
+                   OR lower(cs.career_page) = lower(%s)
+                   OR lower(c.name) = lower(%s)
+                LIMIT 1
+                """,
+                (
+                    suggestion.get("website", ""),
+                    suggestion.get("career_page", ""),
+                    suggestion.get("name", ""),
+                ),
+            )
+            duplicate = cursor.fetchone()
+            if duplicate and duplicate[0] != source_issue:
+                raise ValueError("Company domain or careers URL is already approved")
+        dataframe = pd.DataFrame(
+            [
+                {
+                    "Name": suggestion.get("name", ""),
+                    "Website": suggestion.get("website", ""),
+                    "Career Page": suggestion.get("career_page", ""),
+                    "Description": suggestion.get("notes", ""),
+                    "Label": suggestion.get("ats", ""),
+                    "Active": "active",
+                }
+            ]
+        )
+        self.upsert_companies(dataframe)
+        return self.record_company_suggestion(
+            suggestion,
+            source_issue=source_issue,
+            source_url=source_url,
+            status="approved",
+            actor=actor,
+            submitted_at=submitted_at,
+        )
+
+    def disable_company_suggestion(
+        self,
+        suggestion: dict,
+        *,
+        source_issue: int,
+        source_url: str,
+        status: str = "disabled",
+        actor: str = "",
+        submitted_at: Optional[datetime] = None,
+        findings: Optional[list[dict]] = None,
+    ) -> int:
+        with self.connect() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """
+                UPDATE career_sources
+                SET active = false, updated_at = now()
+                WHERE lower(career_page) = lower(%s)
+                """,
+                (suggestion.get("career_page", ""),),
+            )
+            cursor.execute(
+                """
+                UPDATE companies
+                SET active = false, updated_at = now()
+                WHERE lower(name) = lower(%s)
+                """,
+                (suggestion.get("name", ""),),
+            )
+        return self.record_company_suggestion(
+            suggestion,
+            source_issue=source_issue,
+            source_url=source_url,
+            status=status,
+            actor=actor,
+            submitted_at=submitted_at,
+            findings=findings,
+        )
 
     def upsert_jobs(self, dataframe: pd.DataFrame) -> UpsertStats:
         rows = dataframe.fillna("").to_dict(orient="records")
