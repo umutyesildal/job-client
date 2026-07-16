@@ -1,25 +1,24 @@
-"""
-Job Crawler - Career Page Finder
-Searches company sitemaps for career page URLs
-"""
+"""Find company career pages using sitemaps with a homepage fallback."""
+
+import logging
+import re
+import time
+import xml.etree.ElementTree as ET
+from typing import List, Optional, Tuple
+from urllib.parse import urljoin
 
 import pandas as pd
 import requests
-import xml.etree.ElementTree as ET
-import time
-import logging
-from urllib.parse import urljoin, urlparse
-from typing import Optional, List, Tuple
-import re
+
+try:
+    from .homepage_career_finder import HomepageCareerFinder
+except ImportError:
+    from homepage_career_finder import HomepageCareerFinder
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('crawler.log'),
-        logging.StreamHandler()
-    ]
 )
 
 logger = logging.getLogger(__name__)
@@ -31,9 +30,7 @@ class CareerPageFinder:
     # Career page URL patterns to search for
     CAREER_PATTERNS = [
         r'/career[s]?/?$',
-        r'/career[s]?/[^/]*$',
         r'/jobs?/?$',
-        r'/jobs?/[^/]*$',
         r'/work/?$',
         r'/work-?with-?us/?$',
         r'/join-?us/?$',
@@ -302,21 +299,22 @@ class CareerPageFinder:
         
         try:
             # Find sitemap
+            sitemap_status = "NO_SITEMAP"
             sitemap_url = self.find_sitemap(website)
-            if not sitemap_url:
-                return "", "NO_SITEMAP"
-            
-            # Parse sitemap
-            urls = self.parse_sitemap(sitemap_url)
-            if not urls:
-                return "", "EMPTY_SITEMAP"
-            
-            # Search for career page
-            career_page = self.find_career_page(urls)
-            if career_page:
-                return career_page, "FOUND"
-            else:
-                return "", "NOT_FOUND"
+            if sitemap_url:
+                urls = self.parse_sitemap(sitemap_url)
+                sitemap_status = "EMPTY_SITEMAP" if not urls else "NOT_FOUND"
+                career_page = self.find_career_page(urls)
+                if career_page:
+                    return career_page, "FOUND_SITEMAP"
+
+            logger.info("Sitemap did not expose a career root; checking homepage links")
+            homepage_finder = HomepageCareerFinder(delay=0, timeout=self.timeout)
+            career_page, homepage_status = homepage_finder.process_company(name, website)
+            if homepage_status == "FOUND":
+                return career_page, "FOUND_HOMEPAGE"
+
+            return "", sitemap_status
                 
         except Exception as e:
             logger.error(f"Error processing {name}: {e}")
@@ -360,7 +358,7 @@ class CareerPageFinder:
             df.at[idx, 'Career Page'] = career_page if career_page else ""
             
             # Update statistics
-            if status == "FOUND":
+            if status.startswith("FOUND"):
                 stats['found'] += 1
             elif status == "NOT_FOUND":
                 stats['not_found'] += 1
@@ -393,7 +391,9 @@ def main():
     """Main entry point"""
     import argparse
     
-    parser = argparse.ArgumentParser(description='Find career pages from company sitemaps')
+    parser = argparse.ArgumentParser(
+        description='Find career pages from company sitemaps and homepage links'
+    )
     parser.add_argument('input', help='Input CSV file path')
     parser.add_argument('-o', '--output', help='Output CSV file path (default: updates input file)')
     parser.add_argument('-d', '--delay', type=float, default=2.0, help='Delay between requests (seconds)')

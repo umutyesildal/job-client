@@ -51,7 +51,7 @@ postgresql://daily_jobs:daily_jobs@localhost:5432/daily_berlin_jobs
    automatically:
 
    ```bash
-   .venv/bin/python scripts/db.py import-jobs data/published_all_jobs.csv
+   .venv/bin/python scripts/db.py import-jobs /path/to/published_all_jobs.csv
    ```
 
 6. Add `SUPABASE_DATABASE_URL` to GitHub Actions secrets. Add `DATABASE_URL`

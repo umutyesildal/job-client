@@ -8,7 +8,7 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import logging
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin
 from typing import Optional, List, Tuple
 import re
 
@@ -16,10 +16,6 @@ import re
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('homepage_crawler.log'),
-        logging.StreamHandler()
-    ]
 )
 
 logger = logging.getLogger(__name__)
@@ -134,8 +130,8 @@ class HomepageCareerFinder:
             response = self.session.get(base_url, timeout=self.timeout, allow_redirects=True)
             response.raise_for_status()
             
-            # Wait a bit for any quick JS to execute (though we can't execute JS)
-            time.sleep(1)
+            if self.delay:
+                time.sleep(min(self.delay, 1))
             
             # Parse HTML
             soup = BeautifulSoup(response.text, 'html.parser')
@@ -227,13 +223,13 @@ class HomepageCareerFinder:
     
     def select_best_career_page(self, career_links: List[Tuple[str, int]]) -> List[str]:
         """
-        Select best career page(s) from list based on priority (max 2)
+        Select the best career page from the list.
         
         Args:
             career_links: List of tuples (url, priority)
             
         Returns:
-            List of career page URLs (maximum 2)
+            A list containing at most one career page URL.
         """
         if not career_links:
             return []
@@ -241,8 +237,7 @@ class HomepageCareerFinder:
         # Sort by priority (lower number = higher priority), then by URL length
         sorted_links = sorted(career_links, key=lambda x: (x[1], len(x[0])))
         
-        # Return maximum 2 links with the best priorities
-        best_links = [url for url, priority in sorted_links[:2]]
+        best_links = [sorted_links[0][0]]
         
         logger.info(f"Selected {len(best_links)} career page(s)")
         return best_links
