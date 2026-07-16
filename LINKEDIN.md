@@ -1,6 +1,8 @@
 # LinkedIn Guest Jobs Documentation
 
-This project features a fully functional, login-free LinkedIn guest jobs client located at [linkedin_guest_jobs.py](file:///Users/umutyesildal/Desktop/job-client/job_scraper/scrapers/done/linkedin_guest_jobs.py). It queries LinkedIn's public job search endpoints, bypasses authwalls, extracts job cards, and enriches them by retrieving details directly from public view URLs.
+This project features a login-free LinkedIn guest jobs client in
+`src/daily_jobs/scrapers/done/linkedin_guest_jobs.py`. It queries LinkedIn's
+public job search endpoints and enriches job cards from public view URLs.
 
 ---
 
@@ -48,17 +50,17 @@ When calling the LinkedIn jobs method:
 
 ## Standalone Query Tool
 
-To run dynamic queries from the terminal, use the newly added [`query_linkedin.py`](file:///Users/umutyesildal/Desktop/job-client/job_scraper/src/query_linkedin.py) script.
+To run dynamic queries from the terminal, use the packaged query module.
 
 ### Basic Usage
 ```bash
-python3 query_linkedin.py --keywords "software engineer" --location "Berlin" --limit 50
+python3 -m daily_jobs.query_linkedin --keywords "software engineer" --location "Berlin" --limit 50
 ```
 
 ### Advanced Usage (With Scoring)
 To score the collected LinkedIn jobs against the early-career software profile and see the fit scores:
 ```bash
-python3 query_linkedin.py --keywords "react developer" --location "Berlin" --limit 100 --score
+python3 -m daily_jobs.query_linkedin --keywords "react developer" --location "Berlin" --limit 100 --score
 ```
 
 ### Options
@@ -77,7 +79,7 @@ The normal post-processing step can also append recent LinkedIn jobs before it
 builds `Related Jobs` and `Daily New Jobs`.
 
 ```bash
-python3 post_process_jobs.py --include-linkedin-daily
+python3 -m daily_jobs.post_process_jobs --include-linkedin-daily
 ```
 
 By default this runs Berlin searches for software, backend, frontend,

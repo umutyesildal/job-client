@@ -1,27 +1,27 @@
-from crawler_logger import CrawlerLogger
-from scrapers.done.amazon_scraper import AmazonScraper
-from scrapers.done.ashby_scraper import AshbyScraper
-from scrapers.done.bamboohr_scraper import BambooHRScraper
-from scrapers.done.capgemini_scraper import CapgeminiScraper
-from scrapers.done.consider_scraper import ConsiderScraper
-from scrapers.done.gem_scraper import GemScraper
-from scrapers.done.getro_scraper import GetroScraper
-from scrapers.done.greenhouse_scraper import GreenhouseScraper
-from scrapers.done.hibob_scraper import HiBobScraper
-from scrapers.done.join_scraper import JoinScraper
-from scrapers.done.lever_scraper import LeverScraper
-from scrapers.done.lingoda_scraper import LingodaScraper
-from scrapers.done.microsoft_scraper import MicrosoftScraper
-from scrapers.done.paypal_scraper import PayPalScraper
-from scrapers.done.personio_scraper import PersonioScraper
-from scrapers.done.recruitee_scraper import RecruiteeScraper
-from scrapers.done.rippling_scraper import RipplingScraper
-from scrapers.done.smartrecruiters_scraper import SmartRecruitarsScraper
-from scrapers.done.stripe_scraper import StripeScraper
-from scrapers.done.traderepublic_scraper import TradeRepublicScraper
-from scrapers.done.wipro_scraper import WiproScraper
-from scrapers.done.workable_scraper import WorkableScraper
-from scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
+from .crawler_logger import CrawlerLogger
+from .scrapers.done.amazon_scraper import AmazonScraper
+from .scrapers.done.ashby_scraper import AshbyScraper
+from .scrapers.done.bamboohr_scraper import BambooHRScraper
+from .scrapers.done.capgemini_scraper import CapgeminiScraper
+from .scrapers.done.consider_scraper import ConsiderScraper
+from .scrapers.done.gem_scraper import GemScraper
+from .scrapers.done.getro_scraper import GetroScraper
+from .scrapers.done.greenhouse_scraper import GreenhouseScraper
+from .scrapers.done.hibob_scraper import HiBobScraper
+from .scrapers.done.join_scraper import JoinScraper
+from .scrapers.done.lever_scraper import LeverScraper
+from .scrapers.done.lingoda_scraper import LingodaScraper
+from .scrapers.done.microsoft_scraper import MicrosoftScraper
+from .scrapers.done.paypal_scraper import PayPalScraper
+from .scrapers.done.personio_scraper import PersonioScraper
+from .scrapers.done.recruitee_scraper import RecruiteeScraper
+from .scrapers.done.rippling_scraper import RipplingScraper
+from .scrapers.done.smartrecruiters_scraper import SmartRecruitarsScraper
+from .scrapers.done.stripe_scraper import StripeScraper
+from .scrapers.done.traderepublic_scraper import TradeRepublicScraper
+from .scrapers.done.wipro_scraper import WiproScraper
+from .scrapers.done.workable_scraper import WorkableScraper
+from .scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
 import time
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -31,7 +31,7 @@ from typing import List, Dict, Optional
 from urllib.parse import urlparse
 import pandas as pd
 import os
-from report_generator import ReportGenerator
+from .report_generator import ReportGenerator
 
 
 class DomainRateLimiter:
@@ -97,7 +97,7 @@ class JobCrawlerController:
         'linkedin': LinkedInGuestJobsClient,
     }
     
-    def __init__(self, delay: float = 2.0, output_dir: str = '../../data', max_workers: int = None):
+    def __init__(self, delay: float = 2.0, output_dir: str = 'data', max_workers: int = None):
         self.delay = delay
         self.output_dir = output_dir
         self.failed_companies = []  # Track failed companies

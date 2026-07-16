@@ -2,17 +2,12 @@
 """Small database CLI for migrations, checks, and one-time company imports."""
 
 import argparse
-import sys
-from pathlib import Path
 
 import pandas as pd
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "job_scraper" / "src"))
-
-from data_controller import DataController  # noqa: E402
-from post_process_jobs import classify_jobs  # noqa: E402
-from postgres_storage import PostgresJobStorage  # noqa: E402
+from daily_jobs.data_controller import DataController
+from daily_jobs.post_process_jobs import classify_jobs
+from daily_jobs.postgres_storage import PostgresJobStorage
 
 
 def main() -> int:

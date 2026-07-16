@@ -1,14 +1,7 @@
-import sys
 import unittest
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from pathlib import Path
-
-
-SRC_DIR = Path(__file__).resolve().parents[1] / "job_scraper" / "src"
-sys.path.insert(0, str(SRC_DIR))
-
-from postgres_storage import _posted_date, canonicalize_url, job_keys  # noqa: E402
+from daily_jobs.postgres_storage import _posted_date, canonicalize_url, job_keys
 
 
 class PostgresIdentityTests(unittest.TestCase):

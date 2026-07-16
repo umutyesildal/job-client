@@ -3,7 +3,6 @@ Script to collect 250 Software Engineer jobs in Berlin from LinkedIn.
 """
 
 import os
-import sys
 import logging
 import pandas as pd
 
@@ -11,10 +10,7 @@ import pandas as pd
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Add parent directories to path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
+from .scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
 
 def run_large_collection():
     # LinkedIn Guest Search URL for Software Engineer in Berlin, Germany

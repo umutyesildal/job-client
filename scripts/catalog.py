@@ -8,7 +8,6 @@ import ipaddress
 import json
 import signal
 import socket
-import sys
 import tempfile
 from datetime import datetime
 from pathlib import Path
@@ -18,19 +17,16 @@ import pandas as pd
 import requests
 import yaml
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-sys.path.insert(0, str(REPO_ROOT / "job_scraper"))
-sys.path.insert(0, str(REPO_ROOT / "job_scraper" / "src"))
-
-from company_catalog import (  # noqa: E402
+from daily_jobs.company_catalog import (
     AtsCatalog,
     audit_companies,
     parse_issue_form,
     verify_suggestion,
 )
-from postgres_storage import PostgresJobStorage  # noqa: E402
+from daily_jobs.postgres_storage import PostgresJobStorage
 
 
+REPO_ROOT = Path(__file__).resolve().parents[1]
 ATS_PATH = REPO_ROOT / "catalog" / "ats.yaml"
 DEFAULT_CATALOG_PATH = REPO_ROOT / "catalog" / "companies.yaml"
 
@@ -91,7 +87,7 @@ def check_url(url: str) -> tuple[bool, str]:
 
 
 def smoke_scraper(company: str, career_page: str, ats: str) -> tuple[bool, str]:
-    from client import JobCrawlerController
+    from daily_jobs.client import JobCrawlerController
 
     with tempfile.TemporaryDirectory() as output_dir:
         controller = JobCrawlerController(delay=0, output_dir=output_dir, max_workers=1)

@@ -1,4 +1,3 @@
-import sys
 import tempfile
 import unittest
 from datetime import date
@@ -7,10 +6,7 @@ from pathlib import Path
 import pandas as pd
 
 
-SRC_DIR = Path(__file__).resolve().parents[1] / "job_scraper" / "src"
-sys.path.insert(0, str(SRC_DIR))
-
-from post_process_jobs import (  # noqa: E402
+from daily_jobs.post_process_jobs import (
     classify_jobs,
     filter_published_jobs,
     filter_recent_published_jobs,

@@ -22,7 +22,6 @@ csv.field_size_limit(min(2**31 - 1, sys.maxsize))
 REPO_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = REPO_ROOT / "data"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-SRC_DIR = REPO_ROOT / "job_scraper" / "src"
 SETTINGS_PATH = DATA_DIR / "daily_berlin_jobs_settings.json"
 RUN_LOG_PATH = DATA_DIR / "daily_berlin_jobs_last_run.json"
 
@@ -368,7 +367,7 @@ def build_update_command(settings: dict) -> list[str]:
     if not Path(python).exists():
         python = sys.executable
 
-    command = [python, str(SRC_DIR / "post_process_jobs.py"), "--no-update-baseline"]
+    command = [python, "-m", "daily_jobs.post_process_jobs", "--no-update-baseline"]
     if settings.get("includeLinkedIn", True):
         command.append("--include-linkedin-daily")
         command.extend(["--linkedin-location", str(settings["location"])])
@@ -429,7 +428,7 @@ def async_run_update():
     # Step 1: Prepare command for main.py crawler (crawls ATS platforms from OneSingle sheet)
     main_cmd = [
         python,
-        str(SRC_DIR / "main.py"),
+        "-m", "daily_jobs.main",
         "https://docs.google.com/spreadsheets/d/1sYI0IqzXp_W19eAYDCdC46ZjzrWqW5fwHfY0sAzUxKw/",
         "-t", "sheets",
         "--input-worksheet", "OneSingle"
@@ -438,7 +437,7 @@ def async_run_update():
     # Step 2: Prepare command for linkedin_daily.py (scrapes recent LinkedIn queries)
     linkedin_cmd = [
         python,
-        str(SRC_DIR / "linkedin_daily.py"),
+        "-m", "daily_jobs.linkedin_daily",
         "--location", str(settings.get("location") or "Berlin, Germany"),
         "--limit-per-query", str(settings.get("limitPerQuery") or 25),
         "--delay", str(settings.get("delay") or 1.0),
@@ -620,7 +619,7 @@ def run_sync_sheets() -> dict:
     if not Path(python).exists():
         python = sys.executable
 
-    command = [python, str(SRC_DIR / "pull_from_sheets.py")]
+    command = [python, "-m", "daily_jobs.pull_from_sheets"]
     started_at = datetime.now().isoformat(timespec="seconds")
 
     try:

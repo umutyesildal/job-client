@@ -16,9 +16,9 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from data_controller import DataController
-from job_taxonomy import classify_job
-from linkedin_daily import collect_daily_linkedin_jobs, save_linkedin_daily_jobs
+from .data_controller import DataController
+from .job_taxonomy import classify_job
+from .linkedin_daily import collect_daily_linkedin_jobs, save_linkedin_daily_jobs
 
 
 DEFAULT_SPREADSHEET = (
@@ -478,7 +478,7 @@ def main() -> int:
     postgres_ok = True
     if args.storage_backend in {"postgres", "dual"} and not args.skip_upload:
         try:
-            from postgres_storage import PostgresJobStorage
+            from .postgres_storage import PostgresJobStorage
 
             storage = PostgresJobStorage(retention_days=args.retention_days)
             storage.migrate()

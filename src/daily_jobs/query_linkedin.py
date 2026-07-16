@@ -3,7 +3,6 @@ query_linkedin.py - CLI tool to run dynamic LinkedIn guest job queries and optio
 """
 
 import os
-import sys
 import argparse
 import logging
 import pandas as pd
@@ -13,10 +12,7 @@ from urllib.parse import urlencode
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
 logger = logging.getLogger(__name__)
 
-# Add current and parent directories to sys.path
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
-from scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
+from .scrapers.done.linkedin_guest_jobs import LinkedInGuestJobsClient
 
 def main():
     parser = argparse.ArgumentParser(description="Query LinkedIn Guest Job Search API dynamically")
@@ -24,7 +20,7 @@ def main():
     parser.add_argument("--location", required=True, help="Search location (e.g. 'Berlin, Germany' or 'Munich')")
     parser.add_argument("--limit", type=int, default=50, help="Maximum number of jobs to retrieve (default: 50)")
     parser.add_argument("--delay", type=float, default=1.0, help="Delay between page/detail fetches in seconds (default: 1.0)")
-    parser.add_argument("--output", default="../../data/linkedin_results.csv", help="Output CSV file path")
+    parser.add_argument("--output", default="data/linkedin_results.csv", help="Output CSV file path")
     parser.add_argument("--score", action="store_true", help="Apply early-career software engineering fit scoring")
 
     args = parser.parse_args()
@@ -49,7 +45,7 @@ def main():
         return
 
     # Convert to DataFrame and normalize columns
-    from data_controller import DataController
+    from .data_controller import DataController
     df = pd.DataFrame(jobs)
     df = DataController().normalize_jobs_dataframe(df)
 
@@ -66,7 +62,7 @@ def main():
     if args.score:
         logger.info("Applying early-career software engineering profile scoring...")
         try:
-            from post_process_jobs import filter_related_jobs
+            from .post_process_jobs import filter_related_jobs
             
             # Run the scoring filter
             scored_df = filter_related_jobs(df)
@@ -86,7 +82,7 @@ def main():
                     logger.info(f"    Reasons:  {row.get('Fit Reasons')}")
                     logger.info(f"    Link:     {row.get('Job Link')}\n")
         except ImportError:
-            logger.error("Could not import post_process_jobs.py. Make sure you are running this script from job_scraper/src.")
+            logger.error("Could not import the daily_jobs post-processing module.")
         except Exception as e:
             logger.error(f"Error during scoring: {e}")
 

@@ -12,8 +12,8 @@ import os
 from pathlib import Path
 from urllib.parse import quote, urlparse
 from urllib.request import urlopen
-from crawler_logger import CrawlerLogger
-from company_catalog import AtsCatalog, normalize_name, normalize_url
+from .crawler_logger import CrawlerLogger
+from .company_catalog import AtsCatalog, normalize_name, normalize_url
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

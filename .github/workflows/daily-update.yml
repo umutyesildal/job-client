@@ -35,6 +35,9 @@ jobs:
       - name: Install dependencies
         run: python -m pip install --disable-pip-version-check -r requirements.txt
 
+      - name: Install application package
+        run: python -m pip install --disable-pip-version-check --no-deps -e .
+
       - name: Validate configuration
         run: |
           test -n "$DATABASE_URL"
@@ -45,12 +48,12 @@ jobs:
 
       - name: Collect ATS jobs
         run: |
-          python job_scraper/src/main.py \
+          python -m daily_jobs.main \
             -t postgres
 
       - name: Publish canonical datasets
         run: |
-          python job_scraper/src/post_process_jobs.py \
+          python -m daily_jobs.post_process_jobs \
             --storage-backend postgres \
             --retention-days 30 \
             --include-linkedin-daily \
@@ -60,10 +63,7 @@ jobs:
       - name: Verify PostgreSQL snapshot
         run: |
           python - <<'PY'
-          from pathlib import Path
-          import sys
-          sys.path.insert(0, str(Path("job_scraper/src").resolve()))
-          from postgres_storage import PostgresJobStorage
+          from daily_jobs.postgres_storage import PostgresJobStorage
 
           with PostgresJobStorage().connect() as connection, connection.cursor() as cursor:
               cursor.execute("SELECT count(*) FROM public_jobs")
