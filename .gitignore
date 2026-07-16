@@ -41,6 +41,7 @@ Thumbs.db
 *_backup.csv
 
 # Data files
+data/
 data/*.csv
 data/*.json
 data/*.xlsx

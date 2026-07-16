@@ -58,7 +58,7 @@ Useful database commands:
 .venv/bin/python scripts/db.py doctor
 .venv/bin/python scripts/db.py import-companies companies.csv
 .venv/bin/python scripts/db.py import-companies catalog/companies.yaml --input-type yaml
-.venv/bin/python scripts/db.py import-jobs data/published_all_jobs.csv
+.venv/bin/python scripts/db.py import-jobs /path/to/published_all_jobs.csv
 ```
 
 ## Data model and deduplication
