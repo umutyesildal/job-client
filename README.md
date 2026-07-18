@@ -180,6 +180,34 @@ maintainer-applied `company-status:approved` label can trigger an idempotent
 PostgreSQL sync. Rejected and disabled decisions retain an audit trail, and
 disabling a company preserves historical jobs.
 
+## Built with Codex and GPT-5.6
+
+Daily Berlin Jobs existed before OpenAI Build Week, but it was substantially
+developed during the submission period using Codex with GPT-5.6 as the primary
+engineering partner.
+
+Codex and GPT-5.6 helped:
+
+- redesign job classification around the centralized, versioned
+  `engineering-v2` taxonomy;
+- migrate canonical job storage from Google Sheets to PostgreSQL and Supabase;
+- design semantic and URL-based deduplication, transactional publishing, and
+  retention policies;
+- build the moderated company suggestion and approval workflow;
+- package the Python crawler behind stable CLI entry points; and
+- review and test the security boundaries between GitHub Actions, Vercel,
+  Supabase, and the public Next.js application.
+
+Codex accelerated repository analysis, implementation, debugging, and
+verification across Python, TypeScript, SQL, and GitHub Actions. Key decisions
+made with Codex included keeping PostgreSQL portable, making the Python pipeline
+the single classification authority, retaining only filtered public jobs, and
+preventing community submissions from writing directly to production.
+
+Build Week work is visible in commits `bf663de`, `732542c`, `189dc4e`,
+`0735699`, and `1200771`. The primary Codex build session is included in the
+Devpost submission through its `/feedback` session ID.
+
 ## Security and license
 
 Report vulnerabilities according to [SECURITY.md](SECURITY.md). Do not commit
